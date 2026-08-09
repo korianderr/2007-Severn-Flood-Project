@@ -19,7 +19,7 @@ import rasterio
 def diffusive_wave_step(
     h: np.ndarray,
     z: np.ndarray,
-    k: float = 0.1,
+    k: float = 0.5,
 ) -> np.ndarray:
     """
     Move water between neighbouring cells for one timestep.
@@ -108,7 +108,7 @@ def run_simulation(
     dem_path: str,
     boundary_wse: float,
     n_steps: int,
-    k: float = 0.1,
+    k: float = 0.5,
 ) -> np.ndarray:
     """
     Run the flood simulation.
