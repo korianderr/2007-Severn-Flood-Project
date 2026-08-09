@@ -1,0 +1,4 @@
+# Severn Flood Project
+
+This project builds a machine learning emulator for flood inundation modelling,
+using the July 2007 Severn floods (Tewkesbury–Gloucester) as a case study. A simplified physical flood simulator generates training data, which is used to train a CNN/U-Net surrogate model that predicts flood extent orders of magnitude faster than the underlying numerical solver, validated against Environment Agency hazard maps and historic flood outlines. The emulator is then used to run Monte Carlo simulations over extreme-value-derived rainfall scenarios, producing an exceedance-probability risk curve and expected annual damage estimate — the same workflow used in industry catastrophe modelling for reinsurance and insurance-linked securities pricing. Built with PyTorch, rasterio, and UK Environment Agency open data.
