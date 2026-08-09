@@ -16,7 +16,7 @@ import numpy as np
 import rasterio
 
 
-def diffusive_wave_step(h: np.ndarray, z: np.ndarray, k: float = 0.1) -> np.ndarray:
+def diffusive_wave_step(h: np.ndarray, z: np.ndarray, k: float = 0.1, outflow_frac: float = 0.3) -> np.ndarray:
     """
     Advance water depth by one timestep using a simple diffusive-wave rule.
 
@@ -28,6 +28,9 @@ def diffusive_wave_step(h: np.ndarray, z: np.ndarray, k: float = 0.1) -> np.ndar
             step. Keep this small (roughly 0.05-0.15) — too large and the
             simulation becomes unstable (water oscillates instead of
             settling toward equilibrium).
+        outflow_frac: fraction of the bottom row's water depth that exits
+            the domain each step, representing the river continuing
+            downstream past the study area (open boundary).
 
     Returns:
         (rows, cols) array — updated water depth after one step.
@@ -61,7 +64,11 @@ def diffusive_wave_step(h: np.ndarray, z: np.ndarray, k: float = 0.1) -> np.ndar
     delta[:, 1:]  += flow
 
     h_new = h + delta
-    return np.maximum(h_new, 0)  # depth can't go negative
+
+    # Open boundary: let water at the downstream edge drain out of the domain
+    h_new[-1, :] *= (1 - outflow_frac)
+
+    return np.maximum(h_new, 0)
 
 
 def run_simulation(
