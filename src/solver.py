@@ -16,63 +16,90 @@ import numpy as np
 import rasterio
 
 
-def diffusive_wave_step(h: np.ndarray, z: np.ndarray, k: float = 0.1, leak_frac: float = 0.02) -> np.ndarray:
+def diffusive_wave_step(
+    h: np.ndarray,
+    z: np.ndarray,
+    k: float = 0.1,
+) -> np.ndarray:
     """
-    Advance water depth by one timestep using a simple diffusive-wave rule.
+    Move water between neighbouring cells for one timestep.
 
-    Args:
-        h: (rows, cols) array — current water depth at each cell (m).
-        z: (rows, cols) array — ground elevation at each cell (m), same
-            shape/grid as h (this is the DEM).
-        k: fraction of the water-surface elevation difference that moves per
-            step. Keep this small (roughly 0.05-0.15) — too large and the
-            simulation becomes unstable (water oscillates instead of
-            settling toward equilibrium).
-        leak_frac: fraction of water depth lost from EVERY cell each step,
-            representing downstream conveyance/infiltration happening faster
-            than pure local diffusion would otherwise capture. Needed because
-            with only nearest-neighbor exchange, water takes thousands of
-            steps to physically reach a single edge outflow across a large
-            domain — this gives every cell its own small drain instead,
-            so the model reaches a stable equilibrium in a practical number
-            of steps rather than growing unbounded.
+    Water moves from cells with a higher water-surface elevation
+    to cells with a lower water-surface elevation.
 
-    Returns:
-        (rows, cols) array — updated water depth after one step.
+    The total amount leaving a cell is limited so that a cell
+    can never send away more water than it contains.
     """
-    wse = z + h  # water surface elevation = ground height + water sat on top
 
-    delta = np.zeros_like(h)  # net change in depth this step, built up below
+    # Water-surface elevation = ground elevation + water depth
+    wse = z + h
 
-    # Compare each cell to its neighbor ABOVE (row - 1)
-    diff = wse[1:, :] - wse[:-1, :]           # self minus neighbor-above
-    flow = np.where(diff > 0, k * diff, 0)    # only flows if self is higher
-    delta[1:, :]  -= flow                     # water leaves the self cell
-    delta[:-1, :] += flow                     # ...and arrives at the neighbor
+    # Calculate the desired flow between each pair of neighbours.
+    #
+    # Each flow array represents water leaving the first cell
+    # and moving into the second cell.
 
-    # Compare each cell to its neighbor BELOW (row + 1)
-    diff = wse[:-1, :] - wse[1:, :]
-    flow = np.where(diff > 0, k * diff, 0)
-    delta[:-1, :] -= flow
-    delta[1:, :]  += flow
+    # Flow upwards
+    diff_up = wse[1:, :] - wse[:-1, :]
+    flow_up = np.maximum(k * diff_up, 0)
 
-    # Compare each cell to its neighbor LEFT (col - 1)
-    diff = wse[:, 1:] - wse[:, :-1]
-    flow = np.where(diff > 0, k * diff, 0)
-    delta[:, 1:]  -= flow
-    delta[:, :-1] += flow
+    # Flow downwards
+    diff_down = wse[:-1, :] - wse[1:, :]
+    flow_down = np.maximum(k * diff_down, 0)
 
-    # Compare each cell to its neighbor RIGHT (col + 1)
-    diff = wse[:, :-1] - wse[:, 1:]
-    flow = np.where(diff > 0, k * diff, 0)
-    delta[:, :-1] -= flow
-    delta[:, 1:]  += flow
+    # Flow left
+    diff_left = wse[:, 1:] - wse[:, :-1]
+    flow_left = np.maximum(k * diff_left, 0)
 
+    # Flow right
+    diff_right = wse[:, :-1] - wse[:, 1:]
+    flow_right = np.maximum(k * diff_right, 0)
+
+    # Calculate how much each cell wants to send out.
+    total_out = np.zeros_like(h)
+
+    total_out[1:, :] += flow_up
+    total_out[:-1, :] += flow_down
+    total_out[:, 1:] += flow_left
+    total_out[:, :-1] += flow_right
+
+    # A cell cannot send away more water than it contains.
+    scale = np.ones_like(h)
+
+    cells_with_outflow = total_out > 0
+
+    scale[cells_with_outflow] = np.minimum(
+        1.0,
+        h[cells_with_outflow] / total_out[cells_with_outflow]
+    )
+
+    # Apply the scaling to every outgoing flow.
+    flow_up *= scale[1:, :]
+    flow_down *= scale[:-1, :]
+    flow_left *= scale[:, 1:]
+    flow_right *= scale[:, :-1]
+
+    # Now calculate the net change in water depth.
+    delta = np.zeros_like(h)
+
+    # Up
+    delta[1:, :] -= flow_up
+    delta[:-1, :] += flow_up
+
+    # Down
+    delta[:-1, :] -= flow_down
+    delta[1:, :] += flow_down
+
+    # Left
+    delta[:, 1:] -= flow_left
+    delta[:, :-1] += flow_left
+
+    # Right
+    delta[:, :-1] -= flow_right
+    delta[:, 1:] += flow_right
+
+    # Update the water depth.
     h_new = h + delta
-
-    # Open boundary: let water at the downstream edge drain out of the domain
-    h_new = h + delta
-    h_new *= (1 - leak_frac)  # uniform loss everywhere, not just one edge
 
     return np.maximum(h_new, 0)
 
