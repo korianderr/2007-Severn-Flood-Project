@@ -28,6 +28,6 @@ N_STEPS = 200 # Sanity check before scaling up to 500+ steps for the ML training
 downsample_dem('data/reach_clip.tif', 'data/reach_clip_25m.tif', factor=5)
 h_final = run_simulation('data/reach_clip_25m.tif', boundary_wse=BOUNDARY_WSE, n_steps=N_STEPS)
 
-plt.imshow(h_final, cmap='Blues')
+plt.imshow(h_final, cmap='Blues', vmin=0, vmax=3)
 plt.colorbar()
 plt.show()
