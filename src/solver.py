@@ -33,7 +33,7 @@ def diffusive_wave_step(
     # Water-surface elevation
     wse = z + h
 
-    # Calculate desired flows between neighbouring cells
+    # Flow between neighbouring cells
 
     # Up
     diff_up = wse[1:, :] - wse[:-1, :]
@@ -50,29 +50,6 @@ def diffusive_wave_step(
     # Right
     diff_right = wse[:, :-1] - wse[:, 1:]
     flow_right = np.maximum(k * diff_right, 0)
-
-    # Calculate total amount each cell wants to send out
-    total_out = np.zeros_like(h)
-
-    total_out[1:, :] += flow_up
-    total_out[:-1, :] += flow_down
-    total_out[:, 1:] += flow_left
-    total_out[:, :-1] += flow_right
-
-    # Prevent a cell from sending more water than it contains
-    scale = np.ones_like(h)
-
-    cells_with_outflow = total_out > 0
-
-    scale[cells_with_outflow] = np.minimum(
-        1.0,
-        h[cells_with_outflow] / total_out[cells_with_outflow]
-    )
-
-    flow_up *= scale[1:, :]
-    flow_down *= scale[:-1, :]
-    flow_left *= scale[:, 1:]
-    flow_right *= scale[:, :-1]
 
     # Calculate net change
     delta = np.zeros_like(h)
@@ -102,7 +79,7 @@ def run_simulation(
     dem_path: str,
     boundary_wse: float,
     n_steps: int,
-    k: float = 1.5,
+    k: float = 0.1,
 ) -> np.ndarray:
     """
     Run the flood simulation.
@@ -125,10 +102,6 @@ def run_simulation(
 
         # Move water between neighbouring cells.
         h = diffusive_wave_step(h, z, k=k)
-
-        # Downstream boundary:
-        # water reaching the bottom edge leaves the domain.
-        h[-1, :] = 0
 
         if step % 10 == 0:
             max_idx = np.unravel_index(np.argmax(h), h.shape)
