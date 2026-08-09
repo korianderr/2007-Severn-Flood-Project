@@ -1,13 +1,13 @@
 """
 data_ingestion.py
 
-Loads and cleans raw data pulled from the EA hydrology API
-(environment.data.gov.uk/hydrology). Handles the "all-measures" CSV export
-format, which bundles multiple measure types (15-min, daily, flow, level,
-etc.) into a single file distinguished only by a `measure` column — see
-project_log.md for why filtering on this is necessary before use.
+Loads pre-filtered EA hydrology CSVs (single measure type — e.g. the
+15-min Qualified level/rainfall exports used in this project). Note: the
+raw "all-measures" export bundles multiple measure types into one file
+distinguished by a `measure` column — if you ever switch back to that
+export format, you'll need to filter on that column before use (see
+project_log.md for why this matters).
 """
-
 import pandas as pd
 
 

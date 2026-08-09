@@ -49,6 +49,7 @@ def clip_to_reach(
         with rasterio.open(output_path, 'w', **profile) as dst:
             dst.write(data, 1)
 
+
 def downsample_dem(input_path: str, output_path: str, factor: int) -> None:
     """
     Downsample a DEM by an integer factor (e.g. factor=5 turns 5m resolution

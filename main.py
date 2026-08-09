@@ -10,8 +10,8 @@ import numpy as np
 
 from src.data_ingestion import load_measure, stage_to_aod
 from src.visualise import plot_rainfall_and_level
-from src.solver import run_simulation
 from src.dem_processing import downsample_dem
+from src.solver import bathtub_fill
 
 # --- Data validation (from earlier in the project) ---
 level_df = load_measure('data/Haw-Bridge-level-15min-Qualified.csv')
@@ -25,10 +25,14 @@ plot_rainfall_and_level(rain_df, level_df)
 PEAK_STAGE_2007 = 6.228
 BOUNDARY_WSE = stage_to_aod(PEAK_STAGE_2007)  # ~12.228 mAOD
 
-N_STEPS = 10000 # Sanity check before scaling up to 500+ steps for the ML training data generation.
-
 downsample_dem('data/reach_clip.tif', 'data/reach_clip_25m.tif', factor=5)
-h_final = run_simulation('data/reach_clip_25m.tif', boundary_wse=BOUNDARY_WSE, n_steps=N_STEPS)
+#h_final = run_simulation('data/reach_clip_25m.tif', boundary_wse=BOUNDARY_WSE, n_steps=N_STEPS)
+
+# Load the terrain grid directly (previously hidden inside run_simulation)
+with rasterio.open('data/reach_clip_25m.tif') as src:
+    z = src.read(1)
+
+h_final = bathtub_fill(z, boundary_wse=BOUNDARY_WSE)
 
 plt.figure(figsize=(10, 8))
 

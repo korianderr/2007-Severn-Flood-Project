@@ -1,5 +1,5 @@
 """
-visualize.py
+visualise.py
 
 Plotting helpers for sanity-checking data before it feeds into the solver.
 Currently just the rainfall/level comparison plot used to confirm the

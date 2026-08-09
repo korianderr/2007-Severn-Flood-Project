@@ -1,116 +1,49 @@
 """
 solver.py
 
-Minimal 2D diffusive-wave / cellular-automaton flood spread model. Deliberately
-simple by design (see project_log.md scope note) — this is not a calibrated
-hydrodynamic solver, just a fast way to generate plausible flood-extent
-scenarios as training data for the ML emulator (Week 2).
-
-Physics: water moves from each grid cell to a lower neighbor, proportional to
-the difference in water-surface elevation (ground height + water depth)
-between them. No momentum, no time-dependent flow routing — just local
-height differences pushing water downhill each timestep.
+Minimal flood extent model using connectivity-constrained flood-fill
+("bathtub fill"): a cell floods only if its elevation is below the target
+water-surface elevation AND it's reachable from the upstream boundary via a
+continuous path of other below-water-surface cells. This avoids the failure
+mode of an earlier diffusive-wave version, which let isolated topographic
+pits fill up independently of the actual drainage network (see
+project_log.md). Deliberately simple by design — this generates training
+scenarios for the ML emulator (Week 2), not a calibrated hydrodynamic model.
 """
 
 import numpy as np
-import rasterio
+import scipy.ndimage
 
-
-def diffusive_wave_step(
-    h: np.ndarray,
-    z: np.ndarray,
-    k: float = 0.1,
-    leak_frac: float = 0.02,
-) -> np.ndarray:
+def bathtub_fill(z: np.ndarray, boundary_wse: float, boundary_row: int = 0) -> np.ndarray:
     """
-    Move water between neighbouring cells for one timestep.
+    Compute flood depth via connectivity-constrained fill: a cell floods only
+    if its ground elevation is below boundary_wse AND it's reachable from the
+    boundary row through a continuous path of other cells also below
+    boundary_wse. This prevents isolated low-lying pits (disconnected from
+    the actual drainage network) from filling up independently — the failure
+    mode found in the diffusive-wave approach (see project_log.md).
 
-    Water moves from higher water-surface elevation to lower
-    water-surface elevation. A small fraction of water is also
-    removed from each cell to represent unresolved drainage.
+    Args:
+        z: (rows, cols) DEM elevation array.
+        boundary_wse: water-surface elevation (mAOD) to test against.
+        boundary_row: which row represents the upstream boundary (default: 0,
+            the top row / Tewkesbury end).
+
+    Returns:
+        (rows, cols) array of water depth — 0 everywhere not connected.
     """
+    # Every cell low enough to be underwater at this water level, in isolation
+    below_wse = z < boundary_wse
 
-    # Water-surface elevation
-    wse = z + h
+    # Label connected groups of below_wse cells (4-connectivity: up/down/left/right)
+    labeled, _ = scipy.ndimage.label(below_wse)
 
-    # Flow between neighbouring cells
+    # Which labels actually touch the boundary row?
+    boundary_labels = set(labeled[boundary_row, :][below_wse[boundary_row, :]])
+    boundary_labels.discard(0)  # 0 = not-underwater cells, not a real group
 
-    # Up
-    diff_up = wse[1:, :] - wse[:-1, :]
-    flow_up = np.maximum(k * diff_up, 0)
+    # Keep only cells belonging to a group connected to the boundary
+    connected = np.isin(labeled, list(boundary_labels))
 
-    # Down
-    diff_down = wse[:-1, :] - wse[1:, :]
-    flow_down = np.maximum(k * diff_down, 0)
-
-    # Left
-    diff_left = wse[:, 1:] - wse[:, :-1]
-    flow_left = np.maximum(k * diff_left, 0)
-
-    # Right
-    diff_right = wse[:, :-1] - wse[:, 1:]
-    flow_right = np.maximum(k * diff_right, 0)
-
-    # Calculate net change
-    delta = np.zeros_like(h)
-
-    delta[1:, :] -= flow_up
-    delta[:-1, :] += flow_up
-
-    delta[:-1, :] -= flow_down
-    delta[1:, :] += flow_down
-
-    delta[:, 1:] -= flow_left
-    delta[:, :-1] += flow_left
-
-    delta[:, :-1] -= flow_right
-    delta[:, 1:] += flow_right
-
-    # Update depth
-    h_new = h + delta
-
-    # Simple drainage throughout the domain
-    h_new *= (1 - leak_frac)
-
-    return np.maximum(h_new, 0)
-
-
-def run_simulation(
-    dem_path: str,
-    boundary_wse: float,
-    n_steps: int,
-    k: float = 0.1,
-) -> np.ndarray:
-    """
-    Run the flood simulation.
-
-    The top row is kept at the specified upstream water-surface
-    elevation. The bottom row acts as an open downstream boundary.
-    """
-
-    with rasterio.open(dem_path) as src:
-        z = src.read(1)
-
-    # Start with the whole domain dry.
-    h = np.zeros_like(z)
-
-    for step in range(n_steps):
-
-        # Upstream boundary:
-        # force the top row to the specified water-surface elevation.
-        h[0, :] = np.maximum(boundary_wse - z[0, :], 0)
-
-        # Move water between neighbouring cells.
-        h = diffusive_wave_step(h, z, k=k)
-
-        if step % 10 == 0:
-            max_idx = np.unravel_index(np.argmax(h), h.shape)
-
-            print(
-                f"step {step:3d} | "
-                f"max depth = {h.max():.3f} m | "
-                f"ground = {z[max_idx]:.3f} m | "
-                f"WSE = {z[max_idx] + h[max_idx]:.3f} m"
-            )
-
-    return h
+    depth = np.where(connected, boundary_wse - z, 0)
+    return depth
