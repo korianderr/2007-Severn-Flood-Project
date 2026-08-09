@@ -25,7 +25,7 @@ plot_rainfall_and_level(rain_df, level_df)
 PEAK_STAGE_2007 = 6.228
 BOUNDARY_WSE = stage_to_aod(PEAK_STAGE_2007)  # ~12.228 mAOD
 
-N_STEPS = 10000 # Sanity check before scaling up to 500+ steps for the ML training data generation.
+N_STEPS = 1000 # Sanity check before scaling up to 500+ steps for the ML training data generation.
 
 downsample_dem('data/reach_clip.tif', 'data/reach_clip_25m.tif', factor=5)
 h_final = run_simulation('data/reach_clip_25m.tif', boundary_wse=BOUNDARY_WSE, n_steps=N_STEPS)

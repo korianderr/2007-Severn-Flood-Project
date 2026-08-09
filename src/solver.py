@@ -19,43 +19,39 @@ import rasterio
 def diffusive_wave_step(
     h: np.ndarray,
     z: np.ndarray,
-    k: float = 0.5,
+    k: float = 0.1,
+    leak_frac: float = 0.02,
 ) -> np.ndarray:
     """
     Move water between neighbouring cells for one timestep.
 
-    Water moves from cells with a higher water-surface elevation
-    to cells with a lower water-surface elevation.
-
-    The total amount leaving a cell is limited so that a cell
-    can never send away more water than it contains.
+    Water moves from higher water-surface elevation to lower
+    water-surface elevation. A small fraction of water is also
+    removed from each cell to represent unresolved drainage.
     """
 
-    # Water-surface elevation = ground elevation + water depth
+    # Water-surface elevation
     wse = z + h
 
-    # Calculate the desired flow between each pair of neighbours.
-    #
-    # Each flow array represents water leaving the first cell
-    # and moving into the second cell.
+    # Calculate desired flows between neighbouring cells
 
-    # Flow upwards
+    # Up
     diff_up = wse[1:, :] - wse[:-1, :]
     flow_up = np.maximum(k * diff_up, 0)
 
-    # Flow downwards
+    # Down
     diff_down = wse[:-1, :] - wse[1:, :]
     flow_down = np.maximum(k * diff_down, 0)
 
-    # Flow left
+    # Left
     diff_left = wse[:, 1:] - wse[:, :-1]
     flow_left = np.maximum(k * diff_left, 0)
 
-    # Flow right
+    # Right
     diff_right = wse[:, :-1] - wse[:, 1:]
     flow_right = np.maximum(k * diff_right, 0)
 
-    # Calculate how much each cell wants to send out.
+    # Calculate total amount each cell wants to send out
     total_out = np.zeros_like(h)
 
     total_out[1:, :] += flow_up
@@ -63,7 +59,7 @@ def diffusive_wave_step(
     total_out[:, 1:] += flow_left
     total_out[:, :-1] += flow_right
 
-    # A cell cannot send away more water than it contains.
+    # Prevent a cell from sending more water than it contains
     scale = np.ones_like(h)
 
     cells_with_outflow = total_out > 0
@@ -73,33 +69,31 @@ def diffusive_wave_step(
         h[cells_with_outflow] / total_out[cells_with_outflow]
     )
 
-    # Apply the scaling to every outgoing flow.
     flow_up *= scale[1:, :]
     flow_down *= scale[:-1, :]
     flow_left *= scale[:, 1:]
     flow_right *= scale[:, :-1]
 
-    # Now calculate the net change in water depth.
+    # Calculate net change
     delta = np.zeros_like(h)
 
-    # Up
     delta[1:, :] -= flow_up
     delta[:-1, :] += flow_up
 
-    # Down
     delta[:-1, :] -= flow_down
     delta[1:, :] += flow_down
 
-    # Left
     delta[:, 1:] -= flow_left
     delta[:, :-1] += flow_left
 
-    # Right
     delta[:, :-1] -= flow_right
     delta[:, 1:] += flow_right
 
-    # Update the water depth.
+    # Update depth
     h_new = h + delta
+
+    # Simple drainage throughout the domain
+    h_new *= (1 - leak_frac)
 
     return np.maximum(h_new, 0)
 
@@ -108,7 +102,7 @@ def run_simulation(
     dem_path: str,
     boundary_wse: float,
     n_steps: int,
-    k: float = 0.5,
+    k: float = 1.5,
 ) -> np.ndarray:
     """
     Run the flood simulation.
