@@ -16,7 +16,7 @@ import numpy as np
 import rasterio
 
 
-def diffusive_wave_step(h: np.ndarray, z: np.ndarray, k: float = 0.1, outflow_frac: float = 0.3) -> np.ndarray:
+def diffusive_wave_step(h: np.ndarray, z: np.ndarray, k: float = 0.1, leak_frac: float = 0.02) -> np.ndarray:
     """
     Advance water depth by one timestep using a simple diffusive-wave rule.
 
@@ -28,9 +28,14 @@ def diffusive_wave_step(h: np.ndarray, z: np.ndarray, k: float = 0.1, outflow_fr
             step. Keep this small (roughly 0.05-0.15) — too large and the
             simulation becomes unstable (water oscillates instead of
             settling toward equilibrium).
-        outflow_frac: fraction of the bottom row's water depth that exits
-            the domain each step, representing the river continuing
-            downstream past the study area (open boundary).
+        leak_frac: fraction of water depth lost from EVERY cell each step,
+            representing downstream conveyance/infiltration happening faster
+            than pure local diffusion would otherwise capture. Needed because
+            with only nearest-neighbor exchange, water takes thousands of
+            steps to physically reach a single edge outflow across a large
+            domain — this gives every cell its own small drain instead,
+            so the model reaches a stable equilibrium in a practical number
+            of steps rather than growing unbounded.
 
     Returns:
         (rows, cols) array — updated water depth after one step.
@@ -66,7 +71,8 @@ def diffusive_wave_step(h: np.ndarray, z: np.ndarray, k: float = 0.1, outflow_fr
     h_new = h + delta
 
     # Open boundary: let water at the downstream edge drain out of the domain
-    h_new[-1, :] *= (1 - outflow_frac)
+    h_new = h + delta
+    h_new *= (1 - leak_frac)  # uniform loss everywhere, not just one edge
 
     return np.maximum(h_new, 0)
 
