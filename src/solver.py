@@ -111,34 +111,39 @@ def run_simulation(
     k: float = 0.1,
 ) -> np.ndarray:
     """
-    Run the diffusive-wave flood simulation for n_steps, forcing the top row
-    of the grid (the Tewkesbury/upstream boundary) to boundary_wse at every
-    step, and letting diffusive_wave_step() propagate water across the rest
-    of the terrain.
+    Run the flood simulation.
 
-    Args:
-        dem_path: path to the DEM GeoTIFF to use as terrain (e.g. reach_clip.tif).
-        boundary_wse: water surface elevation (m, same vertical datum as the
-            DEM — mAOD) to force at the top row of the grid, every step.
-        n_steps: number of timesteps to run.
-        k: passed through to diffusive_wave_step — see its docstring.
-
-    Returns:
-        (rows, cols) array — final water depth after n_steps.
+    The top row is kept at the specified upstream water-surface
+    elevation. The bottom row acts as an open downstream boundary.
     """
+
     with rasterio.open(dem_path) as src:
         z = src.read(1)
 
-    h = np.zeros_like(z)  # no flood at the start — everywhere dry
+    # Start with the whole domain dry.
+    h = np.zeros_like(z)
 
     for step in range(n_steps):
-        # Force the top row (upstream boundary) to the target water surface
-        # elevation each step: depth = target minus ground height, floored at 0.
+
+        # Upstream boundary:
+        # force the top row to the specified water-surface elevation.
         h[0, :] = np.maximum(boundary_wse - z[0, :], 0)
 
+        # Move water between neighbouring cells.
         h = diffusive_wave_step(h, z, k=k)
 
+        # Downstream boundary:
+        # water reaching the bottom edge leaves the domain.
+        h[-1, :] = 0
+
         if step % 10 == 0:
-            print(f"step {step}, max depth: {h.max():.2f}")
+            max_idx = np.unravel_index(np.argmax(h), h.shape)
+
+            print(
+                f"step {step:3d} | "
+                f"max depth = {h.max():.3f} m | "
+                f"ground = {z[max_idx]:.3f} m | "
+                f"WSE = {z[max_idx] + h[max_idx]:.3f} m"
+            )
 
     return h
