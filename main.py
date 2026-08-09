@@ -4,14 +4,14 @@ main.py
 Entry point — orchestrates data ingestion, visualization, and the solver.
 """
 
+import matplotlib.pyplot as plt
+import rasterio
+import numpy as np
+
 from src.data_ingestion import load_measure, stage_to_aod
 from src.visualise import plot_rainfall_and_level
 from src.solver import run_simulation
-from src.dem_processing import clip_to_reach
-import matplotlib.pyplot as plt
 from src.dem_processing import downsample_dem
-import rasterio
-import numpy as np
 
 # --- Data validation (from earlier in the project) ---
 level_df = load_measure('data/Haw-Bridge-level-15min-Qualified.csv')
