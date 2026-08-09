@@ -10,6 +10,8 @@ from src.solver import run_simulation
 from src.dem_processing import clip_to_reach
 import matplotlib.pyplot as plt
 from src.dem_processing import downsample_dem
+import rasterio
+import numpy as np
 
 # --- Data validation (from earlier in the project) ---
 level_df = load_measure('data/Haw-Bridge-level-15min-Qualified.csv')
@@ -28,6 +30,28 @@ N_STEPS = 200 # Sanity check before scaling up to 500+ steps for the ML training
 downsample_dem('data/reach_clip.tif', 'data/reach_clip_25m.tif', factor=5)
 h_final = run_simulation('data/reach_clip_25m.tif', boundary_wse=BOUNDARY_WSE, n_steps=N_STEPS)
 
-plt.imshow(h_final, cmap='Blues', vmin=0, vmax=3)
-plt.colorbar()
+plt.figure(figsize=(10, 8))
+
+plt.imshow(
+    h_final,
+    cmap='Blues',
+    vmin=0,
+    vmax=max(3, np.nanmax(h_final))
+)
+
+plt.colorbar(label='Water depth (m)')
+plt.title('Simulated flood depth')
+plt.xlabel('Column')
+plt.ylabel('Row')
+
 plt.show()
+
+with rasterio.open("data/reach_clip_25m.tif") as src:
+    z = src.read(1)
+
+print("DEM min:", z.min())
+print("DEM max:", z.max())
+print("Top row min:", z[0, :].min())
+print("Top row max:", z[0, :].max())
+print("Initial boundary depth max:",
+      np.maximum(BOUNDARY_WSE - z[0, :], 0).max())
