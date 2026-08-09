@@ -48,3 +48,32 @@ def clip_to_reach(
 
         with rasterio.open(output_path, 'w', **profile) as dst:
             dst.write(data, 1)
+
+def downsample_dem(input_path: str, output_path: str, factor: int) -> None:
+    """
+    Downsample a DEM by an integer factor (e.g. factor=5 turns 5m resolution
+    into 25m) using average resampling. Reduces the grid's cell count, which
+    is what determines how many timesteps the diffusive-wave solver needs to
+    propagate water across the domain — a coarser grid reaches equilibrium
+    in far fewer steps, which matters for generating many training scenarios
+    quickly (see project_log.md).
+    """
+    with rasterio.open(input_path) as src:
+        new_height = src.height // factor
+        new_width = src.width // factor
+        data = src.read(
+            1,
+            out_shape=(new_height, new_width),
+            resampling=rasterio.enums.Resampling.average,
+        )
+        transform = src.transform * src.transform.scale(factor, factor)
+        profile = src.profile.copy()
+        profile.update({
+            'height': new_height,
+            'width': new_width,
+            'transform': transform,
+            'compress': 'deflate',
+            'predictor': 3,
+        })
+        with rasterio.open(output_path, 'w', **profile) as dst:
+            dst.write(data, 1)

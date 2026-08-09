@@ -8,6 +8,8 @@ from src.data_ingestion import load_measure, stage_to_aod
 from src.visualise import plot_rainfall_and_level
 from src.solver import run_simulation
 from src.dem_processing import clip_to_reach
+import matplotlib.pyplot as plt
+from src.dem_processing import downsample_dem
 
 # --- Data validation (from earlier in the project) ---
 level_df = load_measure('data/Haw-Bridge-level-15min-Qualified.csv')
@@ -21,6 +23,11 @@ plot_rainfall_and_level(rain_df, level_df)
 PEAK_STAGE_2007 = 6.228
 BOUNDARY_WSE = stage_to_aod(PEAK_STAGE_2007)  # ~12.228 mAOD
 
-N_STEPS = 50 # Sanity check before scaling up to 500+ steps for the ML training data generation.
+N_STEPS = 200 # Sanity check before scaling up to 500+ steps for the ML training data generation.
 
-h_final = run_simulation('data/reach_clip.tif', boundary_wse=BOUNDARY_WSE, n_steps=N_STEPS)
+downsample_dem('data/reach_clip.tif', 'data/reach_clip_25m.tif', factor=5)
+h_final = run_simulation('data/reach_clip_25m.tif', boundary_wse=BOUNDARY_WSE, n_steps=N_STEPS)
+
+plt.imshow(h_final, cmap='Blues')
+plt.colorbar()
+plt.show()
