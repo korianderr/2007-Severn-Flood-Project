@@ -13,9 +13,21 @@ that scenario's saved depth grid as the target.
 """
 
 from pathlib import Path
+import random 
 import numpy as np
 import torch
 from torch.utils.data import Dataset
+
+
+def split_manifest(rows, n_train, n_val):
+    random.shuffle(rows)
+
+    train_rows = rows[0:n_train]
+    val_rows = rows[n_train:n_val + n_train]
+    test_rows = rows[n_val + n_train:len(rows)]
+
+    return train_rows, val_rows, test_rows
+
 
 class FloodDataset(Dataset):
     """
