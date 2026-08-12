@@ -20,6 +20,10 @@ from torch.utils.data import Dataset
 
 
 def split_manifest(rows, n_train, n_val):
+    """
+    Shuffles rows given to ensure random severity for fairness in training, validation,
+    and testing. Split into their seperate arrays and returned. 
+    """
     random.shuffle(rows)
 
     train_rows = rows[0:n_train]
@@ -27,6 +31,20 @@ def split_manifest(rows, n_train, n_val):
     test_rows = rows[n_val + n_train:len(rows)]
 
     return train_rows, val_rows, test_rows
+
+
+def normalize(array, min_val, max_val):
+    """ 
+    Rescale an array to roughly 0-1 using min-max scaling, so elevation
+    (hundreds of metres), boundary_wse (low tens), and depth (a few
+    metres) are all on a comparable scale before hitting the network.
+
+    min_val/max_val must come from the training split only, and be reused
+    unchanged for validation/test data - recomputing them separately per
+    split would mean each split is scaled differently, making the
+    numbers no longer comparable across splits.
+    """
+    return (array - min_val) / (max_val - min_val)
 
 
 class FloodDataset(Dataset):
