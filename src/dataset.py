@@ -33,7 +33,7 @@ def split_manifest(rows, n_train, n_val):
     return train_rows, val_rows, test_rows
 
 
-def normalize(array, min_val, max_val):
+def normalise(array, min_val, max_val):
     """ 
     Rescale an array to roughly 0-1 using min-max scaling, so elevation
     (hundreds of metres), boundary_wse (low tens), and depth (a few
@@ -61,10 +61,13 @@ class FloodDataset(Dataset):
         manifest_rows: this split's slice of manifest.csv rows only — each
             row a dict-like object with 'boundary_wse' and 'filename' keys.
     """
-    def __init__(self, z, scenario_dir, manifest_rows):
+    def __init__(self, z, scenario_dir, manifest_rows, z_min, z_max, wse_min, wse_max, depth_min, depth_max):
         self.z = z
         self.scenario_dir = scenario_dir
         self.rows = manifest_rows
+        self.z_min, self.z_max = z_min, z_max
+        self.wse_min, self.wse_max = wse_min, wse_max
+        self.depth_min, self.depth_max = depth_min, depth_max
 
     def __len__(self):
         """Number of scenarios in this split."""
@@ -83,13 +86,16 @@ class FloodDataset(Dataset):
         row = self.rows[i]
         boundary_wse = float(row['boundary_wse'])
         filename = row['filename']
-
         depth = np.load(Path(self.scenario_dir) / filename)
 
-        wse_channel = np.full_like(self.z, boundary_wse, dtype=np.float32)
-        input_array = np.stack([self.z, wse_channel], axis=0)  # shape (2, H, W)
+        norm_z = normalise(self.z, self.z_min, self.z_max)
+        norm_depth = normalise(depth, self.depth_min, self.depth_max)
+        norm_wse = normalise(boundary_wse, self.wse_min, self.wse_max)
+
+        wse_channel = np.full_like(norm_z, norm_wse, dtype=np.float32)
+        input_array = np.stack([norm_z, wse_channel], axis=0)  # shape (2, H, W)
 
         input_tensor = torch.from_numpy(input_array).float()
-        target_tensor = torch.from_numpy(depth).float().unsqueeze(0)  # shape (1, H, W)
+        target_tensor = torch.from_numpy(norm_depth).float().unsqueeze(0)  # shape (1, H, W)
 
         return input_tensor, target_tensor
