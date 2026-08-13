@@ -44,7 +44,7 @@ def generate_scenarios(z: np.ndarray, wse_range: np.ndarray, output_dir: str) ->
     return str(manifest_path)
 
 if __name__ == "__main__":
-    with rasterio.open("data/reach_clip.tif") as src:
+    with rasterio.open("data/reach_clip_25m.tif") as src:
         z = src.read(1)
 
     wse_range = make_wse_range(low=9.5, high=14, n_scenarios=25)

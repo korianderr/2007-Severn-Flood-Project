@@ -103,7 +103,7 @@ class FloodDataset(Dataset):
         return input_tensor, target_tensor
 
 if __name__ == "__main__":
-    with rasterio.open("data/reach_clip.tif") as src:
+    with rasterio.open("data/reach_clip_25m.tif") as src:
         z = src.read(1)
 
     with open("data/scenarios/manifest.csv", newline="") as f:
