@@ -21,26 +21,26 @@ model = FloodUNet()
 criterion = nn.MSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
-n_epochs = 20
+n_epochs = 50
 
 for epoch in range(n_epochs):
-    epoch_loss = 0.0
+    train_loss_total = 0.0
     for inputs, targets in train_loader:
         optimizer.zero_grad()
         predictions = model(inputs)
         loss = criterion(predictions, targets)
         loss.backward()
         optimizer.step()
-        epoch_loss += loss.item()
+        train_loss_total += loss.item()
 
-    epoch_loss = 0.0
+    val_los_total = 0.0
     with torch.no_grad():
         for inputs, targets in val_loader:
                 predictions = model(inputs)
                 loss = criterion(predictions, targets)
-                epoch_loss += loss.item()
+                val_los_total += loss.item()
 
-    avg_loss = epoch_loss / len(train_loader)
+    avg_loss = train_loss_total / len(train_loader)
     print(f"Epoch {epoch+1}/{n_epochs} - loss: {avg_loss:.4f}")
-    avg_loss = epoch_loss / len(val_loader)
+    avg_loss = val_los_total / len(val_loader)
     print(f"Epoch {epoch+1}/{n_epochs} - loss: {avg_loss:.4f}")
