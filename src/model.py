@@ -9,6 +9,7 @@ project has, and would be far more likely to overfit or be
 impractically slow here.
 """
 
+import torch
 import torch.nn as nn
 
 class FloodUNet(nn.Module):
@@ -39,3 +40,29 @@ class FloodUNet(nn.Module):
         self.dec1 = nn.Conv2d(16, 8, kernel_size=3, padding=1)
 
         self.out = nn.Conv2d(8, 1, kernel_size=1)
+
+    def forward(self, x):
+        """
+        Args:
+            x: input tensor, shape (batch, 2, H, W).
+
+        Returns:
+            predicted depth tensor, shape (batch, 1, H, W).
+        """
+        e1 = torch.relu(self.enc1(x))
+        p1 = self.pool1(e1)
+
+        e2 = torch.relu(self.enc2(p1))
+        p2 = self.pool2(e2)
+
+        b = torch.relu(self.bottleneck(p2))
+
+        u2 = self.up2(b)
+        d2 = torch.cat([u2, e2], dim=1)
+        d2 = torch.relu(self.dec2(d2))
+
+        u1 = self.up1(d2)
+        d1 = torch.cat([u1, e1], dim=1)
+        d1 = torch.relu(self.dec1(d1))
+
+        return self.out(d1)
