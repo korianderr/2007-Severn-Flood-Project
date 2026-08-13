@@ -6,6 +6,7 @@ evaluate.py
 
 import torch
 import torch.nn as nn
+import matplotlib.pyplot as plt
 
 from model import FloodUNet
 from dataset import load_datasets
@@ -32,3 +33,17 @@ true_depth = denormalise(y, test_dataset.depth_min, test_dataset.depth_max)
 
 print("Prediction shape:", pred_depth.shape)
 print("True depth shape:", true_depth.shape)
+
+pred_2d = pred_depth.squeeze().numpy()
+true_2d = true_depth.squeeze().numpy()
+
+fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+
+vmax = true_2d.max()
+axes[0].imshow(true_2d, cmap='Blues', vmin=0, vmax=vmax)
+axes[1].imshow(pred_2d, cmap='Blues', vmin=0, vmax=vmax)
+
+axes[0].set_title('True depth')
+axes[1].set_title('Predicted depth')
+
+plt.show()
