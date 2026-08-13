@@ -101,47 +101,56 @@ class FloodDataset(Dataset):
         target_tensor = torch.from_numpy(norm_depth).float().unsqueeze(0)  # shape (1, H, W)
 
         return input_tensor, target_tensor
+    
 
-if __name__ == "__main__":
-    with rasterio.open("data/reach_clip_25m.tif") as src:
+def load_datasets(dem_path="data/reach_clip_25m.tif",
+                   manifest_path="data/scenarios/manifest.csv",
+                   scenario_dir="data/scenarios"):
+    """
+    Loads the DEM and manifest, splits into train/val/test, computes
+    normalisation min/max from the training split, and returns all
+    three FloodDataset instances ready for use.
+
+    Returns:
+        (train_dataset, val_dataset, test_dataset)
+    """
+    with rasterio.open(dem_path) as src:
         z = src.read(1)
 
-    with open("data/scenarios/manifest.csv", newline="") as f:
+    with open(manifest_path, newline="") as f:
         reader = csv.DictReader(f)
         rows = list(reader)
 
     train_rows, val_rows, test_rows = split_manifest(rows, n_train=18, n_val=4)
 
-    # z's min/max: same DEM for every scenario, so no train-only restriction needed
     z_min, z_max = float(z.min()), float(z.max())
 
-    # wse min/max: straight from the training rows only, no file loading needed
     train_wses = [float(row['boundary_wse']) for row in train_rows]
     wse_min, wse_max = min(train_wses), max(train_wses)
 
-    # depth min/max: have to actually load each training scenario's saved
-    # array, since depth values live in the .npy files, not the manifest
     depth_min, depth_max = float('inf'), float('-inf')
     for row in train_rows:
-        depth = np.load(Path("data/scenarios") / row['filename'])
+        depth = np.load(Path(scenario_dir) / row['filename'])
         depth_min = min(depth_min, float(depth.min()))
         depth_max = max(depth_max, float(depth.max()))
 
-    train_dataset = FloodDataset(z, "data/scenarios", train_rows,
-                                  z_min, z_max, wse_min, wse_max, depth_min, depth_max)
-    val_dataset = FloodDataset(z, "data/scenarios", val_rows,
-                                z_min, z_max, wse_min, wse_max, depth_min, depth_max)
-    test_dataset = FloodDataset(z, "data/scenarios", test_rows,
-                                 z_min, z_max, wse_min, wse_max, depth_min, depth_max)
+    args = (z, scenario_dir, z_min, z_max, wse_min, wse_max, depth_min, depth_max)
+    train_dataset = FloodDataset(*args[:1], args[1], train_rows, *args[2:])
+    val_dataset = FloodDataset(*args[:1], args[1], val_rows, *args[2:])
+    test_dataset = FloodDataset(*args[:1], args[1], test_rows, *args[2:])
 
-    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True)
+    return train_dataset, val_dataset, test_dataset
 
+
+if __name__ == "__main__":
+    train_dataset, val_dataset, test_dataset = load_datasets()
     print("Train/val/test sizes:", len(train_dataset), len(val_dataset), len(test_dataset))
 
     x, y = train_dataset[0]
     print("Input tensor shape:", x.shape, "range:", x.min().item(), x.max().item())
     print("Target tensor shape:", y.shape, "range:", y.min().item(), y.max().item())
 
+    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True)
     for inputs, targets in train_loader:
         print("Batch input shape:", inputs.shape)
         print("Batch target shape:", targets.shape)
