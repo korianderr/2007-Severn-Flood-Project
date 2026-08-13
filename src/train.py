@@ -26,21 +26,24 @@ n_epochs = 50
 for epoch in range(n_epochs):
     train_loss_total = 0.0
     for inputs, targets in train_loader:
-        optimizer.zero_grad()
+        optimizer.zero_grad() # Resets all gradients
         predictions = model(inputs)
-        loss = criterion(predictions, targets)
-        loss.backward()
-        optimizer.step()
+        loss = criterion(predictions, targets) # Calculates how wrong prediction was
+        loss.backward() # Gradients calculated
+        optimizer.step() # Applies gradients
         train_loss_total += loss.item()
 
-    val_los_total = 0.0
+    val_loss_total = 0.0
     with torch.no_grad():
         for inputs, targets in val_loader:
                 predictions = model(inputs)
                 loss = criterion(predictions, targets)
-                val_los_total += loss.item()
+                val_loss_total += loss.item()
 
     avg_loss = train_loss_total / len(train_loader)
     print(f"Epoch {epoch+1}/{n_epochs} - loss: {avg_loss:.4f}")
-    avg_loss = val_los_total / len(val_loader)
+    avg_loss = val_loss_total / len(val_loader)
     print(f"Epoch {epoch+1}/{n_epochs} - loss: {avg_loss:.4f}")
+
+torch.save(model.state_dict(), "data/flood_unet.pt")
+print("Model saved to data/flood_unet.pt")

@@ -97,7 +97,9 @@ class FloodDataset(Dataset):
         wse_channel = np.full_like(norm_z, norm_wse, dtype=np.float32)
         input_array = np.stack([norm_z, wse_channel], axis=0)  # shape (2, H, W)
 
+        # elevaion and boundary wse, used for the model to make predictions:
         input_tensor = torch.from_numpy(input_array).float()
+        # true depth grid, used to compare predictions against
         target_tensor = torch.from_numpy(norm_depth).float().unsqueeze(0)  # shape (1, H, W)
 
         return input_tensor, target_tensor
