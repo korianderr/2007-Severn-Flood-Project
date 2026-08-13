@@ -21,7 +21,7 @@ model = FloodUNet()
 criterion = nn.MSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
-n_epochs = 50
+n_epochs = 50 # Found to be place at which loss plateaus
 
 for epoch in range(n_epochs):
     train_loss_total = 0.0

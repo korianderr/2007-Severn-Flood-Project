@@ -49,6 +49,45 @@ def normalise(array, min_val, max_val):
     return (array - min_val) / (max_val - min_val)
 
 
+def load_datasets(dem_path="data/reach_clip_25m.tif",
+                   manifest_path="data/scenarios/manifest.csv",
+                   scenario_dir="data/scenarios"):
+    """
+    Loads the DEM and manifest, splits into train/val/test, computes
+    normalisation min/max from the training split, and returns all
+    three FloodDataset instances ready for use.
+
+    Returns:
+        (train_dataset, val_dataset, test_dataset)
+    """
+    with rasterio.open(dem_path) as src:
+        z = src.read(1)
+
+    with open(manifest_path, newline="") as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+
+    train_rows, val_rows, test_rows = split_manifest(rows, n_train=18, n_val=4)
+
+    z_min, z_max = float(z.min()), float(z.max())
+
+    train_wses = [float(row['boundary_wse']) for row in train_rows]
+    wse_min, wse_max = min(train_wses), max(train_wses)
+
+    depth_min, depth_max = float('inf'), float('-inf')
+    for row in train_rows:
+        depth = np.load(Path(scenario_dir) / row['filename'])
+        depth_min = min(depth_min, float(depth.min()))
+        depth_max = max(depth_max, float(depth.max()))
+
+    args = (z, scenario_dir, z_min, z_max, wse_min, wse_max, depth_min, depth_max)
+    train_dataset = FloodDataset(*args[:1], args[1], train_rows, *args[2:])
+    val_dataset = FloodDataset(*args[:1], args[1], val_rows, *args[2:])
+    test_dataset = FloodDataset(*args[:1], args[1], test_rows, *args[2:])
+
+    return train_dataset, val_dataset, test_dataset
+
+
 class FloodDataset(Dataset):
     """
     One instance represents one split (train, val, or test) of the 25
@@ -103,45 +142,6 @@ class FloodDataset(Dataset):
         target_tensor = torch.from_numpy(norm_depth).float().unsqueeze(0)  # shape (1, H, W)
 
         return input_tensor, target_tensor
-    
-
-def load_datasets(dem_path="data/reach_clip_25m.tif",
-                   manifest_path="data/scenarios/manifest.csv",
-                   scenario_dir="data/scenarios"):
-    """
-    Loads the DEM and manifest, splits into train/val/test, computes
-    normalisation min/max from the training split, and returns all
-    three FloodDataset instances ready for use.
-
-    Returns:
-        (train_dataset, val_dataset, test_dataset)
-    """
-    with rasterio.open(dem_path) as src:
-        z = src.read(1)
-
-    with open(manifest_path, newline="") as f:
-        reader = csv.DictReader(f)
-        rows = list(reader)
-
-    train_rows, val_rows, test_rows = split_manifest(rows, n_train=18, n_val=4)
-
-    z_min, z_max = float(z.min()), float(z.max())
-
-    train_wses = [float(row['boundary_wse']) for row in train_rows]
-    wse_min, wse_max = min(train_wses), max(train_wses)
-
-    depth_min, depth_max = float('inf'), float('-inf')
-    for row in train_rows:
-        depth = np.load(Path(scenario_dir) / row['filename'])
-        depth_min = min(depth_min, float(depth.min()))
-        depth_max = max(depth_max, float(depth.max()))
-
-    args = (z, scenario_dir, z_min, z_max, wse_min, wse_max, depth_min, depth_max)
-    train_dataset = FloodDataset(*args[:1], args[1], train_rows, *args[2:])
-    val_dataset = FloodDataset(*args[:1], args[1], val_rows, *args[2:])
-    test_dataset = FloodDataset(*args[:1], args[1], test_rows, *args[2:])
-
-    return train_dataset, val_dataset, test_dataset
 
 
 if __name__ == "__main__":
