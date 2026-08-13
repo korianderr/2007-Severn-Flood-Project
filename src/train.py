@@ -15,6 +15,7 @@ from model import FloodUNet
 
 train_dataset, val_dataset, test_dataset = load_datasets()
 train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=4, shuffle=True)
 
 model = FloodUNet()
 criterion = nn.MSELoss()
@@ -32,5 +33,14 @@ for epoch in range(n_epochs):
         optimizer.step()
         epoch_loss += loss.item()
 
+    epoch_loss = 0.0
+    with torch.no_grad():
+        for inputs, targets in val_loader:
+                predictions = model(inputs)
+                loss = criterion(predictions, targets)
+                epoch_loss += loss.item()
+
     avg_loss = epoch_loss / len(train_loader)
+    print(f"Epoch {epoch+1}/{n_epochs} - loss: {avg_loss:.4f}")
+    avg_loss = epoch_loss / len(val_loader)
     print(f"Epoch {epoch+1}/{n_epochs} - loss: {avg_loss:.4f}")
