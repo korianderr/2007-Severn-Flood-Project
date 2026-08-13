@@ -18,7 +18,7 @@ import numpy as np
 import rasterio 
 import csv
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 
 
 def split_manifest(rows, n_train, n_val):
@@ -134,8 +134,15 @@ if __name__ == "__main__":
     test_dataset = FloodDataset(z, "data/scenarios", test_rows,
                                  z_min, z_max, wse_min, wse_max, depth_min, depth_max)
 
+    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True)
+
     print("Train/val/test sizes:", len(train_dataset), len(val_dataset), len(test_dataset))
 
     x, y = train_dataset[0]
     print("Input tensor shape:", x.shape, "range:", x.min().item(), x.max().item())
     print("Target tensor shape:", y.shape, "range:", y.min().item(), y.max().item())
+
+    for inputs, targets in train_loader:
+        print("Batch input shape:", inputs.shape)
+        print("Batch target shape:", targets.shape)
+        break
