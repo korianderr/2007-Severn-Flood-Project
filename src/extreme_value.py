@@ -45,3 +45,6 @@ if __name__ == "__main__":
           f"(year {annual_max.idxmax()})")
     print(f"Smallest annual maximum: {annual_max.min():.1f} mm "
           f"(year {annual_max.idxmin()})")
+    expected_years = set(range(annual_max.index.min(), annual_max.index.max() + 1))
+    missing_years = sorted(expected_years - set(annual_max.index))
+    print(f"Years with no valid annual maximum: {missing_years}")
