@@ -7,6 +7,7 @@ evaluate.py
 import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
+import numpy as np
 
 from model import FloodUNet
 from dataset import load_datasets
@@ -47,3 +48,38 @@ axes[0].set_title('True depth')
 axes[1].set_title('Predicted depth')
 
 plt.show()
+
+### CALCULATE ERRORS
+
+abs_error_sum = 0.0
+sq_error_sum = 0.0
+pixel_count = 0
+tp, fp, fn = 0, 0, 0 # true positive, false positive, false negative
+
+with torch.no_grad():
+    for x, y in test_dataset:
+        prediction = model(x.unsqueeze(0))
+
+        pred_depth = denormalise(prediction, test_dataset.depth_min, test_dataset.depth_max).squeeze().numpy()
+        true_depth = denormalise(y, test_dataset.depth_min, test_dataset.depth_max).squeeze().numpy()
+
+        # Accumulate abs_error_sum, sq_error_sum, pixel_count from pred_depth vs true_depth 
+        abs_error_sum += np.abs(pred_depth - true_depth).sum()
+        sq_error_sum += ((pred_depth - true_depth) ** 2).sum()
+        pixel_count += pred_depth.size
+
+        pred_flooded = pred_depth > 0
+        true_flooded = true_depth > 0
+
+        # Apdate tp, fp, fn using pred_flooded and true_flooded
+        tp += (pred_flooded & true_flooded).sum()
+        fp += (pred_flooded & ~true_flooded).sum()
+        fn += (~pred_flooded & true_flooded).sum()
+
+mae = abs_error_sum / pixel_count
+rmse = (sq_error_sum / pixel_count) ** 0.5
+csi = tp / (tp + fp + fn)
+
+print(f"MAE: {mae:.4f} m")
+print(f"RMSE: {rmse:.4f} m")
+print(f"CSI: {csi:.4f}")
