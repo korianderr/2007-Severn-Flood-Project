@@ -8,9 +8,11 @@ import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
 import numpy as np
+import time
 
 from model import FloodUNet
 from dataset import load_datasets
+from solver import bathtub_fill
 
 model = FloodUNet()
 model.load_state_dict(torch.load("data/flood_unet.pt"))
@@ -83,3 +85,26 @@ csi = tp / (tp + fp + fn)
 print(f"MAE: {mae:.4f} m")
 print(f"RMSE: {rmse:.4f} m")
 print(f"CSI: {csi:.4f}")
+
+### TESTING SPEED AGAINST BATHTUB SPEED
+
+model_times = []
+solver_times = []
+
+with torch.no_grad():
+    for i, (x, y) in enumerate(test_dataset):
+        start = time.perf_counter()
+        _ = model(x.unsqueeze(0))
+        model_times.append(time.perf_counter() - start)
+
+        boundary_wse = float(test_dataset.rows[i]['boundary_wse'])
+        start = time.perf_counter()
+        _ = bathtub_fill(test_dataset.z, boundary_wse=boundary_wse)
+        solver_times.append(time.perf_counter() - start)
+
+avg_model_time = sum(model_times) / len(model_times)
+avg_solver_time = sum(solver_times) / len(solver_times)
+
+print(f"Avg model time: {avg_model_time:.4f}s")
+print(f"Avg solver time: {avg_solver_time:.4f}s")
+print(f"Speed-up: {avg_solver_time / avg_model_time:.2f}x")
