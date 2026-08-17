@@ -12,6 +12,8 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import genextreme, kstest
+
+from data_ingestion import stage_to_aod
  
 def load_annual_maxima(csv_path: str) -> pd.Series:
     """
@@ -66,8 +68,8 @@ def plot_return_levels(annual_max, params):
     plt.plot(T_smooth, fitted_values, color='C1', label='Fitted GEV')
     plt.xscale('log')
     plt.xlabel('Return period (years)')
-    plt.ylabel('Annual maximum rainfall (mm)')
-    plt.title('Return level plot — Trimpley rainfall')
+    plt.ylabel('Annual maximum river level (mAOD)')
+    plt.title('Return level plot — Haw Bridge river level')
     plt.legend()
     plt.tight_layout()
     plt.show()
@@ -93,16 +95,21 @@ if __name__ == "__main__":
     annual_max = load_annual_maxima('data/Trimpley-rainfall-daily-Qualified.csv')
     params = fit_gev(annual_max) # c (shape), loc (location), scale 
 
-    print(f"Years with a valid annual maximum: {len(annual_max)}")
-    print(f"Year range: {annual_max.index.min()}-{annual_max.index.max()}")
-    print(f"Largest annual maximum: {annual_max.max():.1f} mm "
-          f"(year {annual_max.idxmax()})")
-    print(f"Smallest annual maximum: {annual_max.min():.1f} mm "
-          f"(year {annual_max.idxmin()})")
-    expected_years = set(range(annual_max.index.min(), annual_max.index.max() + 1))
-    missing_years = sorted(expected_years - set(annual_max.index))
+    # Try river level
+    level_annual_max = load_annual_maxima('data/Haw-Bridge-level-daily-Qualified.csv')
+    level_annual_max_aod = level_annual_max.apply(stage_to_aod)
+    level_params = fit_gev(level_annual_max_aod)
+
+    print(f"Years with a valid annual maximum: {len(level_annual_max_aod)}")
+    print(f"Year range: {level_annual_max_aod.index.min()}-{level_annual_max_aod.index.max()}")
+    print(f"Largest annual maximum: {level_annual_max_aod.max():.1f} mm "
+          f"(year {level_annual_max_aod.idxmax()})")
+    print(f"Smallest annual maximum: {level_annual_max_aod.min():.1f} mm "
+          f"(year {level_annual_max_aod.idxmin()})")
+    expected_years = set(range(level_annual_max_aod.index.min(), level_annual_max_aod.index.max() + 1))
+    missing_years = sorted(expected_years - set(level_annual_max_aod.index))
     print(f"Years with no valid annual maximum: {missing_years}")
 
-    statistic, p_value = gof_test_gev(annual_max, params)
+    statistic, p_value = gof_test_gev(level_annual_max_aod, level_params)
     print(f"Goodness of fit test: statistic={statistic:.3f}, p-value={p_value:.3f}")
-    plot_return_levels(annual_max, params)
+    plot_return_levels(level_annual_max_aod, level_params)
