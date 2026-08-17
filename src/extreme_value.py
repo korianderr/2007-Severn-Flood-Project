@@ -9,7 +9,7 @@ be added here as they're built.
 """
  
 import pandas as pd
- 
+from scipy.stats import genextreme
  
 def load_annual_maxima(csv_path: str) -> pd.Series:
     """
@@ -48,3 +48,6 @@ if __name__ == "__main__":
     expected_years = set(range(annual_max.index.min(), annual_max.index.max() + 1))
     missing_years = sorted(expected_years - set(annual_max.index))
     print(f"Years with no valid annual maximum: {missing_years}")
+
+    params = genextreme.fit(annual_max.values)
+    print(params) # Returns c (-xi), loc, scale
