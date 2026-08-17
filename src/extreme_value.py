@@ -11,7 +11,7 @@ be added here as they're built.
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.stats import genextreme
+from scipy.stats import genextreme, kstest
  
 def load_annual_maxima(csv_path: str) -> pd.Series:
     """
@@ -77,6 +77,17 @@ def plot_return_levels(annual_max, params):
 def fit_gev(annual_max: pd.Series) -> tuple[float, float, float]:
     return genextreme.fit(annual_max.values)
 
+def gof_test_gev(annual_max: pd.Series, params: tuple[float, float, float]) -> tuple[float, float]:
+    """
+    Goodness-of-fit test: how consistent is the annual maxima series
+    with having come from the fitted GEV distribution?
+ 
+    Returns:
+        (statistic, p_value). 
+    """
+    c, loc, scale = params
+    return kstest(annual_max.values, genextreme.cdf, args=(c, loc, scale))
+
 
 if __name__ == "__main__":
     annual_max = load_annual_maxima('data/Trimpley-rainfall-daily-Qualified.csv')
@@ -92,4 +103,6 @@ if __name__ == "__main__":
     missing_years = sorted(expected_years - set(annual_max.index))
     print(f"Years with no valid annual maximum: {missing_years}")
 
+    statistic, p_value = gof_test_gev(annual_max, params)
+    print(f"Goodness of fit test: statistic={statistic:.3f}, p-value={p_value:.3f}")
     plot_return_levels(annual_max, params)
