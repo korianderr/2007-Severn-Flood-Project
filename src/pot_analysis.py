@@ -11,7 +11,8 @@ year.
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from scipy.stats import genpareto, kstest
+from scipy.stats import genpareto
+from pathlib import Path
 
 from data_ingestion import stage_to_aod
 
@@ -135,6 +136,91 @@ def fit_gpd(events: pd.DataFrame, threshold: float) -> tuple[float, float]:
     return c, scale
 
 
+def gpd_parameter_stability(
+    level_series: pd.DataFrame,
+    thresholds: np.ndarray,
+    min_gap_days: int = 7,
+    min_events: int = 10,
+) -> pd.DataFrame:
+    """
+    Fit a GPD at each candidate threshold and record the diagnostics used
+    to pick a defensible one.
+
+    The GPD is only asymptotically justified above some unknown threshold.
+    Above it, the shape xi is constant and the scale varies with threshold
+    in a known way: sigma_u = sigma_u0 + xi * (u - u0). Subtracting that
+    dependence gives the modified scale, sigma* = sigma_u - xi * u, which
+    is constant in u if and only if the GPD model actually holds above u.
+    So xi and sigma* both flattening is the signal.
+
+    Args:
+        level_series: output of load_level_series() - columns 'date' and
+            'level_mAOD'.
+        thresholds: candidate thresholds (mAOD) to test.
+        min_gap_days: passed through to decluster_exceedances().
+        min_events: skip thresholds with fewer independent events than
+            this - the fit is too unstable to be worth plotting.
+
+    Returns:
+        pd.DataFrame, one row per usable threshold, columns:
+        'threshold', 'n_events', 'events_per_year', 'shape', 'scale',
+        'mod_scale', 'upper_bound' (NaN where the tail is unbounded).
+    """
+    record_years = (
+        level_series['date'].max() - level_series['date'].min()
+    ).days / 365.25
+
+    records = []
+    for u in thresholds:
+        events = decluster_exceedances(level_series, u, min_gap_days)
+        if len(events) < min_events:
+            continue
+
+        c, scale = fit_gpd(events, u)
+
+        # Bounded above only when xi < 0; otherwise the tail is infinite.
+        upper_bound = u - scale / c if c < 0 else np.nan
+
+        records.append({
+            'threshold': u,
+            'n_events': len(events),
+            'events_per_year': len(events) / record_years,
+            'shape': c,
+            'scale': scale,
+            'mod_scale': scale - c * u,
+            'upper_bound': upper_bound,
+        })
+
+    return pd.DataFrame.from_records(records)
+
+
+def plot_parameter_stability(stability: pd.DataFrame) -> None:
+    """
+    Plot shape, modified scale, and events/year against threshold.
+
+    Pick the lowest threshold where shape and modified scale both flatten
+    out, then sanity-check that events/year lands somewhere plausible for
+    genuine flood peaks (roughly 1-3, not 4+).
+    """
+    fig, axes = plt.subplots(3, 1, figsize=(7, 9), sharex=True)
+
+    axes[0].plot(stability['threshold'], stability['shape'], marker='o', markersize=3)
+    axes[0].axhline(0, color='grey', linewidth=0.8, linestyle='--')
+    axes[0].set_ylabel('Shape (xi)')
+
+    axes[1].plot(stability['threshold'], stability['mod_scale'], marker='o', markersize=3)
+    axes[1].set_ylabel('Modified scale')
+
+    axes[2].plot(stability['threshold'], stability['events_per_year'], marker='o', markersize=3)
+    axes[2].axhspan(1, 3, color='C2', alpha=0.15)
+    axes[2].set_ylabel('Independent events / year')
+    axes[2].set_xlabel('Threshold, mAOD')
+
+    axes[0].set_title('GPD parameter stability — Haw Bridge river level')
+    plt.tight_layout()
+    plt.show()
+
+
 if __name__ == "__main__":
     level_series = load_level_series('data/Haw-Bridge-level-daily-Qualified.csv')
 
@@ -153,18 +239,21 @@ if __name__ == "__main__":
     plot_mean_residual_life(values, candidate_thresholds)
      # Threshold chosen from the straight-looking stretch of the plot
     # (roughly 9.0-10.5 mAOD).
-    threshold = 9.5
-    events = decluster_exceedances(level_series, threshold, min_gap_days=7)
+    stability_thresholds = np.linspace(9.0, 11.2, 30)
+    stability = gpd_parameter_stability(level_series, stability_thresholds)
+    print(stability.to_string(index=False, float_format=lambda v: f"{v:.3f}"))
+    plot_parameter_stability(stability)
+    events = decluster_exceedances(level_series, stability_thresholds, min_gap_days=7)
 
-    print(f"\nExceedance days above {threshold} mAOD: "
-          f"{(level_series['level_mAOD'] > threshold).sum()}")
+    print(f"\nExceedance days above {stability_thresholds} mAOD: "
+          f"{(level_series['level_mAOD'] > stability_thresholds).sum()}")
     print(f"Independent events after declustering: {len(events)}")
 
     # Sanity check: 2007's flood should collapse to one event.
     events_2007 = events[events['date'].dt.year == 2007]
     print(f"\nEvents in 2007:\n{events_2007}")
 
-    c, scale = fit_gpd(events, threshold)
+    c, scale = fit_gpd(events, stability_thresholds)
     print(f"\nGPD fit: c (shape, xi) = {c:.3f}, scale = {scale:.3f}")
     boundary = 9.5 - scale / c
     print(f"\nBoundary: {boundary:.3f}mAOD")
