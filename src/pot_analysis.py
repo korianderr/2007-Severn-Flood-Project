@@ -136,6 +136,14 @@ def fit_gpd(events: pd.DataFrame, threshold: float) -> tuple[float, float]:
     return c, scale
 
 
+def fit_exponential_tail(events: pd.DataFrame, threshold: float) -> float:
+    """
+    Fit an exponential tail (GPD with shape fixed at zero) to declustered
+    event peaks.
+    """
+    return float((events['level_mAOD'].values - threshold).mean())
+
+
 def gpd_parameter_stability(
     level_series: pd.DataFrame,
     thresholds: np.ndarray,
@@ -177,6 +185,7 @@ def gpd_parameter_stability(
             continue
 
         c, scale = fit_gpd(events, u)
+        scale_exp = fit_exponential_tail(events, u)
 
         # Bounded above only when xi < 0; otherwise the tail is infinite.
         upper_bound = u - scale / c if c < 0 else np.nan
@@ -189,6 +198,7 @@ def gpd_parameter_stability(
             'scale': scale,
             'mod_scale': scale - c * u,
             'upper_bound': upper_bound,
+            'scale_exp': scale_exp,
         })
 
     return pd.DataFrame.from_records(records)
@@ -208,8 +218,11 @@ def plot_parameter_stability(stability: pd.DataFrame) -> None:
     axes[0].axhline(0, color='grey', linewidth=0.8, linestyle='--')
     axes[0].set_ylabel('Shape (xi)')
 
-    axes[1].plot(stability['threshold'], stability['mod_scale'], marker='o', markersize=3)
-    axes[1].set_ylabel('Modified scale')
+    axes[1].plot(stability['threshold'], stability['mod_scale'],
+                 marker='o', markersize=3, label='GPD modified scale')
+    axes[1].plot(stability['threshold'], stability['scale_exp'],
+                 marker='o', markersize=3, label='Exponential scale (xi=0)')
+    axes[1].legend()
 
     axes[2].plot(stability['threshold'], stability['events_per_year'], marker='o', markersize=3)
     axes[2].axhspan(1, 3, color='C2', alpha=0.15)
