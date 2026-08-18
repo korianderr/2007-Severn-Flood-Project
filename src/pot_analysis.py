@@ -11,6 +11,7 @@ year.
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from scipy.stats import genpareto, kstest
 
 from data_ingestion import stage_to_aod
 
@@ -117,6 +118,23 @@ def plot_mean_residual_life(values: np.ndarray, thresholds: np.ndarray) -> None:
     plt.show()
 
 
+def fit_gpd(events: pd.DataFrame, threshold: float) -> tuple[float, float]:
+    """
+    Fit a GPD to declustered event peaks.
+
+    Args:
+        events: output of decluster_exceedances() - columns 'date' and
+            'level_mAOD'.
+        threshold: the same threshold used to produce events (mAOD).
+ 
+    Returns:
+        (c, scale) - GPD shape and scale.
+    """
+    excesses = events['level_mAOD'].values - threshold
+    c, loc, scale = genpareto.fit(excesses, floc=0)
+    return c, scale
+
+
 if __name__ == "__main__":
     level_series = load_level_series('data/Haw-Bridge-level-daily-Qualified.csv')
 
@@ -145,3 +163,8 @@ if __name__ == "__main__":
     # Sanity check: 2007's flood should collapse to one event.
     events_2007 = events[events['date'].dt.year == 2007]
     print(f"\nEvents in 2007:\n{events_2007}")
+
+    c, scale = fit_gpd(events, threshold)
+    print(f"\nGPD fit: c (shape, xi) = {c:.3f}, scale = {scale:.3f}")
+    boundary = 9.5 - scale / c
+    print(f"\nBoundary: {boundary:.3f}mAOD")
