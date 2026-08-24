@@ -16,9 +16,6 @@ from model import FloodUNet
 
 train_dataset, val_dataset, test_dataset = load_datasets()
 
-print("train wse:", sorted(float(r['boundary_wse']) for r in train_dataset.rows))
-print("depth_min/max:", train_dataset.depth_min, train_dataset.depth_max)
-
 torch.manual_seed(42)
 np.random.seed(42)
 

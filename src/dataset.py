@@ -67,11 +67,21 @@ def load_datasets(dem_path="data/reach_clip_25m.tif",
     with rasterio.open(dem_path) as src:
         z = src.read(1)
 
+    # Crop flood depth to reasonable values
+    max_wse = 14.0
+    margin = 5.0 # Keep to up to 5m above max wse
+    mask = z <= (max_wse + margin)
+    rows = np.where(mask.any(axis=1))[0]
+    cols = np.where(mask.any(axis=0))[0]
+    row_slice = slice(rows.min(), rows.max() + 1)
+    col_slice = slice(cols.min(), cols.max() + 1)
+    z = z[row_slice, col_slice]
+
     with open(manifest_path, newline="") as f:
         reader = csv.DictReader(f)
         rows = list(reader)
 
-    train_rows, val_rows, test_rows = split_manifest(rows, n_train=18, n_val=4)
+    train_rows, val_rows, test_rows = split_manifest(rows, n_train=70, n_val=15)
 
     z_min, z_max = float(z.min()), float(z.max())
 
@@ -85,9 +95,9 @@ def load_datasets(dem_path="data/reach_clip_25m.tif",
         depth_max = max(depth_max, float(depth.max()))
 
     args = (z, scenario_dir, z_min, z_max, wse_min, wse_max, depth_min, depth_max)
-    train_dataset = FloodDataset(*args[:1], args[1], train_rows, *args[2:])
-    val_dataset = FloodDataset(*args[:1], args[1], val_rows, *args[2:])
-    test_dataset = FloodDataset(*args[:1], args[1], test_rows, *args[2:])
+    train_dataset = FloodDataset(*args[:1], args[1], train_rows, *args[2:], row_slice, col_slice)
+    val_dataset = FloodDataset(*args[:1], args[1], val_rows, *args[2:], row_slice, col_slice)
+    test_dataset = FloodDataset(*args[:1], args[1], test_rows, *args[2:], row_slice, col_slice)
 
     return train_dataset, val_dataset, test_dataset
 
@@ -106,13 +116,14 @@ class FloodDataset(Dataset):
         manifest_rows: this split's slice of manifest.csv rows only — each
             row a dict-like object with 'boundary_wse' and 'filename' keys.
     """
-    def __init__(self, z, scenario_dir, manifest_rows, z_min, z_max, wse_min, wse_max, depth_min, depth_max):
+    def __init__(self, z, scenario_dir, manifest_rows, z_min, z_max, wse_min, wse_max, depth_min, depth_max, row_slice, col_slice):
         self.z = z
         self.scenario_dir = scenario_dir
         self.rows = manifest_rows
         self.z_min, self.z_max = z_min, z_max
         self.wse_min, self.wse_max = wse_min, wse_max
         self.depth_min, self.depth_max = depth_min, depth_max
+        self.row_slice, self.col_slice = row_slice, col_slice
 
     def __len__(self):
         """Number of scenarios in this split."""
@@ -132,6 +143,7 @@ class FloodDataset(Dataset):
         boundary_wse = float(row['boundary_wse'])
         filename = row['filename']
         depth = np.load(Path(self.scenario_dir) / filename)
+        depth = depth[self.row_slice, self.col_slice] # Crop depth
 
         norm_z = normalise(self.z, self.z_min, self.z_max)
         norm_depth = normalise(depth, self.depth_min, self.depth_max)
