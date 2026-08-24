@@ -21,16 +21,20 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 
 
-def split_manifest(rows, n_train, n_val):
+def split_manifest(rows, n_train, n_val, seed=42):
     """
     Shuffles rows given to ensure random severity for fairness in training, validation,
     and testing. Split into their seperate arrays and returned. 
     """
-    random.shuffle(rows)
+    by_wse = sorted(rows, key=lambda r: float(r['boundary_wse']))
+    lowest, highest = by_wse[0], by_wse[-1]
+    middle = by_wse[1:-1]
 
-    train_rows = rows[0:n_train]
-    val_rows = rows[n_train:n_val + n_train]
-    test_rows = rows[n_val + n_train:len(rows)]
+    random.Random(seed).shuffle(middle)
+
+    train_rows = [lowest, highest] + middle[:n_train - 2]
+    val_rows = middle[n_train - 2:n_train - 2 + n_val]
+    test_rows = middle[n_train - 2 + n_val:]
 
     return train_rows, val_rows, test_rows
 

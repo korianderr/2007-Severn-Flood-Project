@@ -9,11 +9,19 @@ prints the training loss each epoch so progress is visible.
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
+import numpy as np
 
 from dataset import load_datasets
 from model import FloodUNet
 
 train_dataset, val_dataset, test_dataset = load_datasets()
+
+print("train wse:", sorted(float(r['boundary_wse']) for r in train_dataset.rows))
+print("depth_min/max:", train_dataset.depth_min, train_dataset.depth_max)
+
+torch.manual_seed(42)
+np.random.seed(42)
+
 train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=4, shuffle=True)
 
