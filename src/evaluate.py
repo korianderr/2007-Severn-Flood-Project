@@ -70,8 +70,9 @@ with torch.no_grad():
         sq_error_sum += ((pred_depth - true_depth) ** 2).sum()
         pixel_count += pred_depth.size
 
-        pred_flooded = pred_depth > 0
-        true_flooded = true_depth > 0
+        flood_threshold = 0.05  # below this is noise
+        pred_flooded = pred_depth > flood_threshold
+        true_flooded = true_depth > flood_threshold
 
         # Apdate tp, fp, fn using pred_flooded and true_flooded
         tp += (pred_flooded & true_flooded).sum()
