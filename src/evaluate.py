@@ -10,11 +10,11 @@ Test scenarios sit ~4.5cm apart in boundary_wse (100 scenarios over
 trained range rather than generalisation to unseen conditions.
 """
 
+import time
 import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
 import numpy as np
-import time
 
 from model import FloodUNet
 from dataset import load_datasets
@@ -59,43 +59,56 @@ plt.show()
 
 ### CALCULATE ERRORS
 
-abs_error_sum = 0.0
-sq_error_sum = 0.0
-pixel_count = 0
-tp, fp, fn = 0, 0, 0 # true positive, false positive, false negative
+def evaluate_split(model, dataset, thresh=0.05):
+    """
+    Compute MAE, RMSE and CSI over one split, inside the terrain mask.
 
-mask = test_dataset.mask
+    Returns fp and fn alongside CSI.
 
-with torch.no_grad():
-    for x, y in test_dataset:
-        prediction = model(x.unsqueeze(0))
+    Args:
+        model: a FloodUNet in eval mode with weights loaded.
+        dataset: one split from load_datasets().
+        thresh: wet/dry depth threshold in metres, applied to both
+            prediction and truth.
 
-        pred_depth = denormalise(prediction, test_dataset.depth_min, test_dataset.depth_max).squeeze().numpy()
-        true_depth = denormalise(y, test_dataset.depth_min, test_dataset.depth_max).squeeze().numpy()
+    Returns:
+        dict with keys 'mae', 'rmse', 'csi', 'tp', 'fp', 'fn'.
+    """
+    mask = dataset.mask
+    abs_error_sum = sq_error_sum = 0.0
+    pixel_count = 0
+    tp = fp = fn = 0
 
-        # Accumulate abs_error_sum, sq_error_sum, pixel_count from pred_depth vs true_depth and apply mask
-        error = (pred_depth - true_depth)[mask]
-        abs_error_sum += np.abs(error).sum()
-        sq_error_sum += (error ** 2).sum()
-        pixel_count += mask.sum()
+    with torch.no_grad():
+        for x, y in dataset:
+            pred_depth = denormalise(model(x.unsqueeze(0)),
+                                     dataset.depth_min, dataset.depth_max
+                                     ).squeeze().numpy()
+            true_depth = denormalise(y, dataset.depth_min, dataset.depth_max
+                                     ).squeeze().numpy()
 
-        flood_threshold = 0.05  # below this is noise
-        pred_flooded = (pred_depth > flood_threshold) & mask
-        true_flooded = (true_depth > flood_threshold) & mask
+            error = (pred_depth - true_depth)[mask]
+            abs_error_sum += np.abs(error).sum()
+            sq_error_sum += (error ** 2).sum()
+            pixel_count += mask.sum()
 
+            pred_flooded = (pred_depth > thresh) & mask
+            true_flooded = (true_depth > thresh) & mask
+            tp += (pred_flooded & true_flooded).sum()
+            fp += (pred_flooded & ~true_flooded).sum()
+            fn += (~pred_flooded & true_flooded).sum()
 
-        # Update tp, fp, fn using pred_flooded and true_flooded
-        tp += (pred_flooded & true_flooded).sum()
-        fp += (pred_flooded & ~true_flooded).sum()
-        fn += (~pred_flooded & true_flooded).sum()
+    return {
+        'mae': abs_error_sum / pixel_count,
+        'rmse': (sq_error_sum / pixel_count) ** 0.5,
+        'csi': tp / (tp + fp + fn),
+        'tp': tp, 'fp': fp, 'fn': fn,
+    }
 
-mae = abs_error_sum / pixel_count
-rmse = (sq_error_sum / pixel_count) ** 0.5
-csi = tp / (tp + fp + fn)
-
-print(f"MAE: {mae:.4f} m")
-print(f"RMSE: {rmse:.4f} m")
-print(f"CSI: {csi:.4f}")
+for name, ds in [('train', train_dataset), ('val', val_dataset), ('test', test_dataset)]:
+    m = evaluate_split(model, ds)
+    print(f"{name:>5}: CSI {m['csi']:.3f}  MAE {m['mae']:.3f}  "
+          f"RMSE {m['rmse']:.3f}  fp {m['fp']:>8}  fn {m['fn']:>8}")
 
 ### TESTING SPEED AGAINST BATHTUB SPEED
 
