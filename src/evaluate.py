@@ -58,6 +58,8 @@ sq_error_sum = 0.0
 pixel_count = 0
 tp, fp, fn = 0, 0, 0 # true positive, false positive, false negative
 
+mask = test_dataset.mask
+
 with torch.no_grad():
     for x, y in test_dataset:
         prediction = model(x.unsqueeze(0))
@@ -71,8 +73,9 @@ with torch.no_grad():
         pixel_count += pred_depth.size
 
         flood_threshold = 0.05  # below this is noise
-        pred_flooded = pred_depth > flood_threshold
-        true_flooded = true_depth > flood_threshold
+        pred_flooded = (pred_depth > flood_threshold) & mask
+        true_flooded = (true_depth > flood_threshold) & mask
+
 
         # Apdate tp, fp, fn using pred_flooded and true_flooded
         tp += (pred_flooded & true_flooded).sum()

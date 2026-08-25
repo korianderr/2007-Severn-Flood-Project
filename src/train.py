@@ -22,8 +22,13 @@ np.random.seed(42)
 train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=4, shuffle=True)
 
+# Build mask tensor from dataset mask
+mask_tensor = torch.from_numpy(train_dataset.mask).float().unsqueeze(0).unsqueeze(0)  # (1, 1, H, W)
+
+def masked_mse(pred, target, mask):
+    return ((pred - target) ** 2 * mask).sum() / mask.sum()
+
 model = FloodUNet()
-criterion = nn.MSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
 n_epochs = 50 # Found to be place at which loss plateaus
@@ -33,7 +38,7 @@ for epoch in range(n_epochs):
     for inputs, targets in train_loader:
         optimizer.zero_grad() # Resets all gradients
         predictions = model(inputs)
-        loss = criterion(predictions, targets) # Calculates how wrong prediction was
+        loss = masked_mse(predictions, targets, mask_tensor) # Calculates how wrong prediction was, ignoring pixels that never flood
         loss.backward() # Gradients calculated
         optimizer.step() # Applies gradients
         train_loss_total += loss.item()
@@ -42,7 +47,7 @@ for epoch in range(n_epochs):
     with torch.no_grad():
         for inputs, targets in val_loader:
                 predictions = model(inputs)
-                loss = criterion(predictions, targets)
+                loss = masked_mse(predictions, targets, mask_tensor)
                 val_loss_total += loss.item()
 
     avg_loss = train_loss_total / len(train_loader)
