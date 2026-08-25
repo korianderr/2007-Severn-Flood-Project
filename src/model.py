@@ -2,11 +2,7 @@
 model.py
 
 A small U-Net (2 encoder/decoder levels, filters 8-16-32)
-for the flood-depth emulator. Kept small given only 18 training
-scenarios and CPU-only training - the standard U-Net paper's sizing
-(64+ filters, 4-5 levels) assumes far more training data than this
-project has, and would be far more likely to overfit or be
-impractically slow here.
+for the flood-depth emulator.
 """
 
 import torch

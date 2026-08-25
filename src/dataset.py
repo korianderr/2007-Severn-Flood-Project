@@ -101,7 +101,7 @@ def load_datasets(dem_path="data/reach_clip_25m.tif",
 
 class FloodDataset(Dataset):
     """
-    One instance represents one split (train, val, or test) of the 25
+    One instance represents one split (train, val, or test) of the 100
     generated scenarios — never a mix, to avoid leaking pixels from the same
     scenario across splits (see project discussion on data leakage).
 

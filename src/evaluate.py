@@ -1,7 +1,13 @@
 """
 evaluate.py
 
+Evaluates the trained flood U-net against the tests. Generates a
+comparison plot of the depths, then MAE, RMSE and CSI to evaluate
+error.
 
+Test scenarios sit ~4.5cm apart in boundary_wse (100 scenarios over
+9.5-14.0 mAOD), so these metrics measure interpolation within the
+trained range rather than generalisation to unseen conditions.
 """
 
 import torch
@@ -67,17 +73,18 @@ with torch.no_grad():
         pred_depth = denormalise(prediction, test_dataset.depth_min, test_dataset.depth_max).squeeze().numpy()
         true_depth = denormalise(y, test_dataset.depth_min, test_dataset.depth_max).squeeze().numpy()
 
-        # Accumulate abs_error_sum, sq_error_sum, pixel_count from pred_depth vs true_depth 
-        abs_error_sum += np.abs(pred_depth - true_depth).sum()
-        sq_error_sum += ((pred_depth - true_depth) ** 2).sum()
-        pixel_count += pred_depth.size
+        # Accumulate abs_error_sum, sq_error_sum, pixel_count from pred_depth vs true_depth and apply mask
+        error = (pred_depth - true_depth)[mask]
+        abs_error_sum += np.abs(error).sum()
+        sq_error_sum += (error ** 2).sum()
+        pixel_count += mask.sum()
 
         flood_threshold = 0.05  # below this is noise
         pred_flooded = (pred_depth > flood_threshold) & mask
         true_flooded = (true_depth > flood_threshold) & mask
 
 
-        # Apdate tp, fp, fn using pred_flooded and true_flooded
+        # Update tp, fp, fn using pred_flooded and true_flooded
         tp += (pred_flooded & true_flooded).sum()
         fp += (pred_flooded & ~true_flooded).sum()
         fn += (~pred_flooded & true_flooded).sum()
