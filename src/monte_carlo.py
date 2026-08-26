@@ -43,7 +43,7 @@ understates sigma and so overstates rarity.
 import numpy as np
 import torch
 
-from dataset import normalise
+from dataset import normalise, load_datasets
 from evaluate import denormalise
 
 
@@ -118,7 +118,8 @@ def build_depth_lookup(model, dataset, wse_grid):
             depth = denormalise(
                 prediction, dataset.depth_min, dataset.depth_max
             ).squeeze().numpy()
-            depth = np.maximum(depth, 0) # No negative
+            physical_max = np.maximum(boundary_wse - dataset.z, 0)
+            depth = np.clip(depth, 0, physical_max) # Can't exceed boundary_wse - z (see solver.py)
             depths.append(depth)
 
     return np.stack(depths)
@@ -139,10 +140,56 @@ def depth_for_level(level, wse_grid, depth_stack):
     return depth_stack[np.abs(wse_grid - level).argmin()]
 
 
+def flooded_area_per_year(maxima, wse_grid, depth_stack, mask, thresh=0.05, cell_area=625.0):
+    """
+    Reduce each simulated year to one hazard metric, the flooded area.
+
+    Each year's peak level is mapped to the nearest cached depth grid,
+    and that grid's flooded area is the year's value. The area is
+    computed once per grid point rather than once per year so that
+    the sum doesn't have to be repeated thousands of times.
+
+    Years with no exceedance are recorded as zero.
+
+    Args:
+        maxima: output of simulate_annual_maxima() — annual peak level
+            in mAOD, NaN in years with no exceedance.
+        wse_grid: the WSE grid passed to build_depth_lookup().
+        depth_stack: its output, shape (len(wse_grid), H, W).
+        thresh: wet/dry depth threshold in metres. Matches the value
+            used in evaluate.py so hazard extent is defined
+            consistently across the project.
+        cell_area: area of one DEM cell in m². 625 = 25m x 25m, the
+            resolution of reach_clip_25m.tif.
+
+    Returns:
+        (areas, area_by_grid):
+            areas: np.ndarray, shape (len(maxima),) — flooded area in
+                m² for each simulated year, 0 in non-exceedance years.
+            area_by_grid: np.ndarray, shape (len(wse_grid),) — flooded
+                area at each grid point, returned so monotonicity in
+                WSE can be checked without recomputing.
+    """
+    area_by_grid = np.array([((d > thresh) & mask).sum() * cell_area for d in depth_stack])
+
+    # Drop years of no exceedance
+    out = np.zeros(len(maxima))
+    valid = ~np.isnan(maxima)
+
+    # Map each valid year to nearest grid point
+    idx = np.abs(wse_grid[None, :] - maxima[valid][:, None]).argmin(axis=1)
+
+    # Get correct area for each year
+    out[valid] = area_by_grid[idx]
+
+    return out, area_by_grid
+
+
 if __name__ == "__main__":
     import time
-    from dataset import load_datasets
+
     from model import FloodUNet
+    from solver import bathtub_fill
 
     u, sigma, lam = PARAM_CASES['central']
     n_years = 10000
@@ -168,3 +215,21 @@ if __name__ == "__main__":
     totals = depth_stack.sum(axis=(1, 2))
     print(f"Monotonic in WSE: {np.all(np.diff(totals) > 0)}")
     print(f"Depth range: {depth_stack.min():.3f} to {depth_stack.max():.3f} m") 
+
+    areas, area_by_grid = flooded_area_per_year(maxima, wse_grid, depth_stack, train_dataset.mask)
+
+    print(f"zero years: {(areas == 0).mean():.3f}  (expect ~0.18)")
+    print(f"max: {areas.max()/1e6:.1f} km²   mean: {areas.mean()/1e6:.2f} km²")
+    print(f"monotonic in level: {np.all(np.diff(area_by_grid) >= 0)}")
+
+    print(f"area range: {area_by_grid[0]/1e6:.1f} to {area_by_grid[-1]/1e6:.1f} km²")
+    print(f"mask covers: {train_dataset.mask.sum()*625/1e6:.1f} km² of 230 km²")
+
+    true_areas = np.array([
+        ((bathtub_fill(train_dataset.z, boundary_wse=w) > 0.05) & train_dataset.mask).sum() * 625.0
+        for w in wse_grid
+    ])
+    for i in [0, 20, 40, 59]:
+        print(f"wse {wse_grid[i]:.2f}: emulator {area_by_grid[i]/1e6:6.1f}  "
+            f"solver {true_areas[i]/1e6:6.1f} km²")
+    print(f"mean abs area error: {np.abs(area_by_grid-true_areas).mean()/1e6:.1f} km²")

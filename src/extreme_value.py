@@ -4,8 +4,7 @@ extreme_value.py
 Extreme value analysis for the risk model: fitting a distribution to
 historical rainfall extremes so we can Monte Carlo sample synthetic storm
 scenarios beyond what's in the historical record. Starts with annual maxima
-extraction (GEV fit); the GEV fitting itself and Monte Carlo sampling will
-be added here as they're built.
+extraction (GEV fit).
 """
  
 import pandas as pd

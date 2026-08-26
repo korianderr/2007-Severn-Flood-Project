@@ -20,42 +20,10 @@ from model import FloodUNet
 from dataset import load_datasets
 from solver import bathtub_fill
 
-model = FloodUNet()
-model.load_state_dict(torch.load("data/flood_unet.pt"))
-model.eval() # Tells model it is being used for predictions now and not training
-
-criterion = nn.MSELoss()
-
 def denormalise(array, min_val, max_val):
     """Converts back to real units"""
     return array * (max_val - min_val) + min_val
 
-train_dataset, val_dataset, test_dataset = load_datasets()
-x, y = test_dataset[0]
-
-with torch.no_grad():
-    x_batch = x.unsqueeze(0)
-    prediction = model(x_batch)
-
-pred_depth = denormalise(prediction, test_dataset.depth_min, test_dataset.depth_max)
-true_depth = denormalise(y, test_dataset.depth_min, test_dataset.depth_max)
-
-print("Prediction shape:", pred_depth.shape)
-print("True depth shape:", true_depth.shape)
-
-pred_2d = pred_depth.squeeze().numpy()
-true_2d = true_depth.squeeze().numpy()
-
-fig, axes = plt.subplots(1, 2, figsize=(10, 5))
-
-vmax = true_2d.max()
-axes[0].imshow(true_2d, cmap='Blues', vmin=0, vmax=vmax)
-axes[1].imshow(pred_2d, cmap='Blues', vmin=0, vmax=vmax)
-
-axes[0].set_title('True depth')
-axes[1].set_title('Predicted depth')
-
-plt.show()
 
 ### CALCULATE ERRORS
 
@@ -105,30 +73,63 @@ def evaluate_split(model, dataset, thresh=0.05):
         'tp': tp, 'fp': fp, 'fn': fn,
     }
 
-for name, ds in [('train', train_dataset), ('val', val_dataset), ('test', test_dataset)]:
-    m = evaluate_split(model, ds)
-    print(f"{name:>5}: CSI {m['csi']:.3f}  MAE {m['mae']:.3f}  "
-          f"RMSE {m['rmse']:.3f}  fp {m['fp']:>8}  fn {m['fn']:>8}")
 
-### TESTING SPEED AGAINST BATHTUB SPEED
+if __name__ == "__main__":
+    model = FloodUNet()
+    model.load_state_dict(torch.load("data/flood_unet.pt"))
+    model.eval() # Tells model it is being used for predictions now and not training
 
-model_times = []
-solver_times = []
+    train_dataset, val_dataset, test_dataset = load_datasets()
+    x, y = test_dataset[0]
 
-with torch.no_grad():
-    for i, (x, y) in enumerate(test_dataset):
-        start = time.perf_counter()
-        _ = model(x.unsqueeze(0))
-        model_times.append(time.perf_counter() - start)
+    with torch.no_grad():
+        x_batch = x.unsqueeze(0)
+        prediction = model(x_batch)
 
-        boundary_wse = float(test_dataset.rows[i]['boundary_wse'])
-        start = time.perf_counter()
-        _ = bathtub_fill(test_dataset.z, boundary_wse=boundary_wse)
-        solver_times.append(time.perf_counter() - start)
+    pred_depth = denormalise(prediction, test_dataset.depth_min, test_dataset.depth_max)
+    true_depth = denormalise(y, test_dataset.depth_min, test_dataset.depth_max)
 
-avg_model_time = sum(model_times) / len(model_times)
-avg_solver_time = sum(solver_times) / len(solver_times)
+    print("Prediction shape:", pred_depth.shape)
+    print("True depth shape:", true_depth.shape)
 
-print(f"Avg model time: {avg_model_time:.4f}s")
-print(f"Avg solver time: {avg_solver_time:.4f}s")
-print(f"Speed-up: {avg_solver_time / avg_model_time:.2f}x")
+    pred_2d = pred_depth.squeeze().numpy()
+    true_2d = true_depth.squeeze().numpy()
+
+    fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+
+    vmax = true_2d.max()
+    axes[0].imshow(true_2d, cmap='Blues', vmin=0, vmax=vmax)
+    axes[1].imshow(pred_2d, cmap='Blues', vmin=0, vmax=vmax)
+
+    axes[0].set_title('True depth')
+    axes[1].set_title('Predicted depth')
+
+    plt.show()
+
+    for name, ds in [('train', train_dataset), ('val', val_dataset), ('test', test_dataset)]:
+        m = evaluate_split(model, ds)
+        print(f"{name:>5}: CSI {m['csi']:.3f}  MAE {m['mae']:.3f}  "
+            f"RMSE {m['rmse']:.3f}  fp {m['fp']:>8}  fn {m['fn']:>8}")
+
+    ### TESTING SPEED AGAINST BATHTUB SPEED
+
+    model_times = []
+    solver_times = []
+
+    with torch.no_grad():
+        for i, (x, y) in enumerate(test_dataset):
+            start = time.perf_counter()
+            _ = model(x.unsqueeze(0))
+            model_times.append(time.perf_counter() - start)
+
+            boundary_wse = float(test_dataset.rows[i]['boundary_wse'])
+            start = time.perf_counter()
+            _ = bathtub_fill(test_dataset.z, boundary_wse=boundary_wse)
+            solver_times.append(time.perf_counter() - start)
+
+    avg_model_time = sum(model_times) / len(model_times)
+    avg_solver_time = sum(solver_times) / len(solver_times)
+
+    print(f"Avg model time: {avg_model_time:.4f}s")
+    print(f"Avg solver time: {avg_solver_time:.4f}s")
+    print(f"Speed-up: {avg_solver_time / avg_model_time:.2f}x")
