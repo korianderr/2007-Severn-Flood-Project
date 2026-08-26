@@ -42,7 +42,6 @@ understates sigma and so overstates rarity.
 
 import numpy as np
 import torch
-import matplotlib.pyplot as plt
 
 from dataset import normalise, load_datasets
 from evaluate import denormalise
@@ -208,63 +207,92 @@ def exceedance_curve(annual_values):
     return aep, values
 
 
+def check_sampler(n_years=10000, seed=42):
+    """Verify the sampler reproduces the fitted return levels."""
+    u, sigma, lam = PARAM_CASES['central']
+    maxima = simulate_annual_maxima(u, sigma, lam, n_years, seed=seed)
+    print(f"NaN fraction: {np.isnan(maxima).mean():.3f}  (expect ~0.179)")
+    valid = np.sort(maxima[~np.isnan(maxima)])[::-1]
+    # Ranks scale with n_years: rank k has return period n_years/k.
+    for T, expected in [(1000, 12.67), (100, 12.10), (10, 11.53)]:
+        k = n_years // T
+        print(f"T={T:>5} yr: {valid[k-1]:.2f} mAOD  (expect ~{expected})")
+
+
+def validate_emulator_area(wse_grid, depth_stack, area_by_grid, z, mask):
+    """
+    Compare emulator flooded area against bathtub_fill across the grid.
+
+    CSI measures pixel agreement. This measures total area, which is
+    what the risk model actually consumes. The two can diverge.
+    """
+    true_areas = np.array([
+        ((bathtub_fill(z, boundary_wse=w) > 0.05) & mask).sum() * 625.0
+        for w in wse_grid
+    ])
+    for i in np.linspace(0, len(wse_grid) - 1, 4).astype(int):
+        print(f"wse {wse_grid[i]:.2f}: emulator {area_by_grid[i]/1e6:6.1f}  "
+              f"solver {true_areas[i]/1e6:6.1f} km²")
+    print(f"mean abs area error: "
+          f"{np.abs(area_by_grid - true_areas).mean()/1e6:.1f} km²")
+
+
+def plot_ep_curves(wse_grid, depth_stack, mask, n_years=10000, seed=42):
+    """
+    EP curve under each POT parameter case, overlaid.
+
+    Same seed across cases so the spread between curves reflects the
+    parameters, not the random draw. That spread is the threshold
+    uncertainty carried from pot_analysis.py — note it does NOT include
+    shape uncertainty, since all three cases fix xi=0.
+    """
+    plt.figure(figsize=(7, 5))
+    for name, (u, sigma, lam) in PARAM_CASES.items():
+        maxima = simulate_annual_maxima(u, sigma, lam, n_years, seed=seed)
+        areas, _ = flooded_area_per_year(maxima, wse_grid, depth_stack, mask)
+        aep, values = exceedance_curve(areas)
+        plt.semilogx(1 / aep, values / 1e6, label=name)
+
+        above = (maxima[~np.isnan(maxima)] > 14.0).sum()
+        print(f"{name:>8}: max {np.nanmax(maxima):.2f} mAOD, "
+              f"{above} yr above emulator training range")
+
+    plt.xlabel('Return period (years)')
+    plt.ylabel('Flooded area (km²)')
+    plt.title('Hazard exceedance curve — POT parameter sensitivity')
+    plt.legend()
+    plt.grid(True, which='both', alpha=0.3)
+    plt.tight_layout()
+    plt.savefig('figures/ep_curve_sensitivity.png', dpi=150)
+    plt.show()
+
+
 if __name__ == "__main__":
     import time
-
+    import matplotlib.pyplot as plt
     from model import FloodUNet
     from solver import bathtub_fill
 
-    u, sigma, lam = PARAM_CASES['central']
-    n_years = 100000
-    maxima = simulate_annual_maxima(u, sigma, lam, n_years, seed=42)
+    check_sampler()
 
-    print(f"NaN fraction: {np.isnan(maxima).mean():.3f}  (expect ~0.179)")
-
-    valid = np.sort(maxima[~np.isnan(maxima)])[::-1]
-    for k, expected in [(10, 12.67), (100, 12.10), (1000, 11.53)]:
-        print(f"T={n_years//k:>5} yr: {valid[k-1]:.2f} mAOD  (expect ~{expected})")
-
-    ### EMULATOR
+    # Emulator lookup. Grid spans all three parameter cases.
     train_dataset, _, _ = load_datasets()
     model = FloodUNet()
     model.load_state_dict(torch.load("data/flood_unet.pt"))
     model.eval()
 
-    wse_grid = np.linspace(10.8, 13.6, 60)
+    wse_grid = np.linspace(10.4, 15.0, 90)
     start = time.perf_counter()
     depth_stack = build_depth_lookup(model, train_dataset, wse_grid)
     print(f"{len(wse_grid)} emulator calls in {time.perf_counter()-start:.2f}s")
 
-    totals = depth_stack.sum(axis=(1, 2))
-    print(f"Monotonic in WSE: {np.all(np.diff(totals) > 0)}")
-    print(f"Depth range: {depth_stack.min():.3f} to {depth_stack.max():.3f} m") 
-
-    # 
-    areas, area_by_grid = flooded_area_per_year(maxima, wse_grid, depth_stack, train_dataset.mask)
-
-    print(f"zero years: {(areas == 0).mean():.3f}  (expect ~0.18)")
-    print(f"max: {areas.max()/1e6:.1f} km²   mean: {areas.mean()/1e6:.2f} km²")
-    print(f"monotonic in level: {np.all(np.diff(area_by_grid) >= 0)}")
-
+    _, area_by_grid = flooded_area_per_year(
+        simulate_annual_maxima(*PARAM_CASES['central'], 10000, seed=42),
+        wse_grid, depth_stack, train_dataset.mask
+    )
     print(f"area range: {area_by_grid[0]/1e6:.1f} to {area_by_grid[-1]/1e6:.1f} km²")
     print(f"mask covers: {train_dataset.mask.sum()*625/1e6:.1f} km² of 230 km²")
 
-    true_areas = np.array([
-        ((bathtub_fill(train_dataset.z, boundary_wse=w) > 0.05) & train_dataset.mask).sum() * 625.0
-        for w in wse_grid
-    ])
-    for i in [0, 20, 40, 59]:
-        print(f"wse {wse_grid[i]:.2f}: emulator {area_by_grid[i]/1e6:6.1f}  "
-            f"solver {true_areas[i]/1e6:6.1f} km²")
-    print(f"mean abs area error: {np.abs(area_by_grid-true_areas).mean()/1e6:.1f} km²")
-
-    # Plot exceedance curve
-    aep, values = exceedance_curve(areas)
-    plt.figure(figsize=(7, 5))
-    plt.semilogx(1 / aep, values / 1e6)
-    plt.xlabel('Return period (years)')
-    plt.ylabel('Flooded area (km²)')
-    plt.title('Hazard exceedance curve — central case')
-    plt.grid(True, which='both', alpha=0.3)
-    plt.tight_layout()
-    plt.show()
+    validate_emulator_area(wse_grid, depth_stack, area_by_grid,
+                           train_dataset.z, train_dataset.mask)
+    plot_ep_curves(wse_grid, depth_stack, train_dataset.mask)
