@@ -42,6 +42,7 @@ understates sigma and so overstates rarity.
 
 import numpy as np
 import torch
+import matplotlib.pyplot as plt
 
 from dataset import normalise, load_datasets
 from evaluate import denormalise
@@ -185,6 +186,28 @@ def flooded_area_per_year(maxima, wse_grid, depth_stack, mask, thresh=0.05, cell
     return out, area_by_grid
 
 
+def exceedance_curve(annual_values):
+    """
+    Convert annual values into an exceedance-probability curve.
+
+    Sorted descending. Annual exceedance probability of an
+    exceedance at rank k has exceedance probability of k/n
+    where n is the number of simualated years. 
+    
+    Args:
+        annual_values: one value per simulated year (m², or currency
+            once exposure is added).
+
+    Returns:
+        (aep, values): aep ascending from 1/n to 1, values descending.
+            Return period is 1/aep.
+    """
+    n = len(annual_values)
+    values = np.sort(annual_values)[::-1]
+    aep = np.arange(1, n + 1) / n
+    return aep, values
+
+
 if __name__ == "__main__":
     import time
 
@@ -192,7 +215,7 @@ if __name__ == "__main__":
     from solver import bathtub_fill
 
     u, sigma, lam = PARAM_CASES['central']
-    n_years = 10000
+    n_years = 100000
     maxima = simulate_annual_maxima(u, sigma, lam, n_years, seed=42)
 
     print(f"NaN fraction: {np.isnan(maxima).mean():.3f}  (expect ~0.179)")
@@ -216,6 +239,7 @@ if __name__ == "__main__":
     print(f"Monotonic in WSE: {np.all(np.diff(totals) > 0)}")
     print(f"Depth range: {depth_stack.min():.3f} to {depth_stack.max():.3f} m") 
 
+    # 
     areas, area_by_grid = flooded_area_per_year(maxima, wse_grid, depth_stack, train_dataset.mask)
 
     print(f"zero years: {(areas == 0).mean():.3f}  (expect ~0.18)")
@@ -233,3 +257,14 @@ if __name__ == "__main__":
         print(f"wse {wse_grid[i]:.2f}: emulator {area_by_grid[i]/1e6:6.1f}  "
             f"solver {true_areas[i]/1e6:6.1f} km²")
     print(f"mean abs area error: {np.abs(area_by_grid-true_areas).mean()/1e6:.1f} km²")
+
+    # Plot exceedance curve
+    aep, values = exceedance_curve(areas)
+    plt.figure(figsize=(7, 5))
+    plt.semilogx(1 / aep, values / 1e6)
+    plt.xlabel('Return period (years)')
+    plt.ylabel('Flooded area (km²)')
+    plt.title('Hazard exceedance curve — central case')
+    plt.grid(True, which='both', alpha=0.3)
+    plt.tight_layout()
+    plt.show()
