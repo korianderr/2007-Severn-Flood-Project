@@ -57,11 +57,11 @@ def annual_damage_series(maxima, wse_grid, damages):
 
 if __name__ == "__main__":
     import torch
+    import matplotlib.pyplot as plt
 
     from dataset import load_datasets
     from model import FloodUNet
-    from monte_carlo import build_depth_lookup
-    from monte_carlo import simulate_annual_maxima, PARAM_CASES
+    from monte_carlo import build_depth_lookup, simulate_annual_maxima, PARAM_CASES, exceedance_curve
 
     exposure = np.load("data/exposure.npy")
     train_dataset, _, _ = load_datasets()
@@ -92,3 +92,20 @@ if __name__ == "__main__":
     for T in [10, 100, 1000]:
         k = len(annual) // T
         print(f"beyond 1-in-{T}: {100*srt[:k].sum()/annual.sum():.0f}% of EAD")
+
+    # Loss EP curve
+    plt.figure(figsize=(7, 5))
+    for name, (u, sigma, lam) in PARAM_CASES.items():
+        maxima = simulate_annual_maxima(u, sigma, lam, n_years=10000, seed=42)
+        annual = annual_damage_series(maxima, wse_grid, damages)
+        aep, values = exceedance_curve(annual)
+        plt.semilogx(1 / aep, values / 1e6, label=f"{name} (EAD £{annual.mean()/1e6:.0f}m)")
+
+    plt.xlabel('Return period (years)')
+    plt.ylabel('Annual loss (£m)')
+    plt.title('Loss exceedance curve — POT parameter sensitivity')
+    plt.legend()
+    plt.grid(True, which='both', alpha=0.3)
+    plt.tight_layout()
+    plt.savefig('figures/loss_ep_curve.png', dpi=150)
+    plt.show()
