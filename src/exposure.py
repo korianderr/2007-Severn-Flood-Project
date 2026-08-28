@@ -8,6 +8,7 @@ import rasterio
 from rasterio.warp import transform_bounds
 import osmnx as ox
 import numpy as np
+import matplotlib.pyplot as plt
 
 
 def dem_bounds_wgs_84(dem_path="data/reach_clip_25m.tif"):
@@ -115,3 +116,22 @@ if __name__ == "__main__":
     # Save counts and exposure
     np.save("data/building_counts.npy", counts)
     np.save("data/exposure.npy", exposure)
+
+    # The mask is z <= 19m, matching dataset.py. The floodable subset
+    # of the domain. Buildings outside it can never be hit by any
+    # scenario, so the EAD rests entirely on the ones inside.
+    mask = z <= 19.0
+
+    print(f"buildings inside flood mask: {counts[mask].sum()} "
+          f"of {counts.sum()} ({100*counts[mask].sum()/counts.sum():.1f}%)")
+    print(f"occupied cells inside mask: {(counts > 0)[mask].sum()}")
+    print(f"exposure inside mask: £{exposure[mask].sum()/1e9:.2f}bn "
+          f"of £{exposure.sum()/1e9:.2f}bn")
+
+    fig, axes = plt.subplots(1, 2, figsize=(9, 7))
+    axes[0].imshow(z, cmap='terrain')
+    axes[0].set_title('Elevation')
+    axes[1].imshow(counts > 0, cmap='Reds')
+    axes[1].set_title('Building cells')
+    plt.tight_layout()
+    plt.show()
