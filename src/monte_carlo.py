@@ -42,6 +42,7 @@ understates sigma and so overstates rarity.
 
 import numpy as np
 import torch
+import matplotlib.pyplot as plt
 
 from dataset import normalise, load_datasets
 from evaluate import denormalise
@@ -269,7 +270,6 @@ def plot_ep_curves(wse_grid, depth_stack, mask, n_years=10000, seed=42):
 
 if __name__ == "__main__":
     import time
-    import matplotlib.pyplot as plt
     from model import FloodUNet
     from solver import bathtub_fill
 
